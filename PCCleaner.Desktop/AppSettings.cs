@@ -12,7 +12,7 @@ internal sealed class AppSettings
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "PC Cleaner", "settings.json");
+        "pc-cleaner-ghetto", "settings.json");
 
     private static readonly JsonSerializerOptions SerializerOptions =
         new() { WriteIndented = true };
