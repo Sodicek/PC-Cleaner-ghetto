@@ -708,6 +708,7 @@ internal sealed class TuiApp
     private void ShowDiskOverviewDialog()
     {
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var cts     = new System.Threading.CancellationTokenSource();
 
         var dialog = new Dialog("  Disk Overview  ", 72, 24);
         var output = new TextView
@@ -718,58 +719,65 @@ internal sealed class TuiApp
             ReadOnly = true,
             WordWrap = false,
             ColorScheme = SchemeDim,
-            Text = "Scanning home directory..."
+            Text = "Scanning..."
         };
         dialog.Add(output);
 
         var btnClose = new Button("Close");
-        btnClose.Clicked += () => Application.RequestStop();
+        btnClose.Clicked += () => { cts.Cancel(); Application.RequestStop(); };
         dialog.AddButton(btnClose);
 
-        _ = Task.Run(() =>
+        var snapshot  = SystemInfo.GetCurrentDriveSnapshot();
+        string header = BuildOverviewHeader(home, snapshot);
+
+        // Parallel scan — each completed dir triggers a live UI refresh
+        var results  = new System.Collections.Concurrent.ConcurrentBag<(string name, long size)>();
+        var lockObj  = new object();
+        string[]   dirs = Directory.Exists(home) ? Directory.GetDirectories(home) : Array.Empty<string>();
+        int        total = dirs.Length;
+
+        void Refresh(bool done)
         {
-            var sb = new System.Text.StringBuilder();
-            try
+            if (cts.IsCancellationRequested) return;
+            List<(string name, long size)> snap;
+            lock (lockObj) snap = results.OrderByDescending(r => r.size).ToList();
+            long maxSz = snap.Count > 0 ? Math.Max(snap[0].size, 1) : 1;
+            string progress = done ? $"Done — {snap.Count} folders" : $"Scanning... {snap.Count}/{total}";
+
+            var sb = new StringBuilder();
+            sb.AppendLine(header);
+            sb.AppendLine($"Top folders in {home}  [{progress}]");
+            sb.AppendLine(new string('─', 60));
+            foreach (var (name, sz) in snap.Take(16))
             {
-                var snapshot = SystemInfo.GetCurrentDriveSnapshot();
-                if (snapshot != null)
-                    sb.AppendLine($"Drive free : {SystemInfo.FormatBytes(snapshot.FreeBytes)}");
-
-                if (_settings.TotalBytesFreed > 0)
-                    sb.AppendLine($"All-time freed by PC Cleaner: {SystemInfo.FormatBytes(_settings.TotalBytesFreed)}");
-
-                sb.AppendLine();
-                sb.AppendLine($"Top folders in {home}");
-                sb.AppendLine(new string('─', 60));
-
-                var dirs = Directory.Exists(home)
-                    ? Directory.GetDirectories(home)
-                    : Array.Empty<string>();
-
-                var results = new List<(string name, long size)>();
-                foreach (string dir in dirs)
-                    results.Add((Path.GetFileName(dir), DirSize(dir)));
-
-                results.Sort((a, b) => b.size.CompareTo(a.size));
-                long maxSize = results.Count > 0 ? Math.Max(results[0].size, 1) : 1;
-
-                foreach (var (name, size) in results.Take(16))
-                {
-                    int    barLen  = (int)((double)size / maxSize * 22);
-                    string bar     = new string('█', barLen) + new string('░', 22 - barLen);
-                    string sizeStr = SystemInfo.FormatBytes(size).PadLeft(10);
-                    sb.AppendLine($"  {bar}  {sizeStr}  {name}");
-                }
+                int    barLen  = (int)((double)sz / maxSz * 22);
+                string bar     = new string('█', barLen) + new string('░', 22 - barLen);
+                string sizeStr = SystemInfo.FormatBytes(sz).PadLeft(10);
+                sb.AppendLine($"  {bar}  {sizeStr}  {name}");
             }
-            catch (Exception ex)
-            {
-                sb.AppendLine($"Error: {ex.Message}");
-            }
+            string text = sb.ToString();
+            Application.MainLoop.Invoke(() => { if (!cts.IsCancellationRequested) output.Text = text; });
+        }
 
-            Application.MainLoop.Invoke(() => { output.Text = sb.ToString(); });
-        });
+        _ = Task.WhenAll(dirs.Select(dir => Task.Run(() =>
+        {
+            long sz = DirSize(dir);
+            lock (lockObj) results.Add((Path.GetFileName(dir), sz));
+            Refresh(done: false);
+        }, cts.Token))).ContinueWith(_ => Refresh(done: true), cts.Token);
 
         Application.Run(dialog);
+        cts.Cancel();
+    }
+
+    private string BuildOverviewHeader(string home, DiskSpaceSnapshot? snapshot)
+    {
+        var sb = new StringBuilder();
+        if (snapshot != null)
+            sb.AppendLine($"Drive free  : {SystemInfo.FormatBytes(snapshot.FreeBytes)}");
+        if (_settings.TotalBytesFreed > 0)
+            sb.AppendLine($"Freed by PC Cleaner (all-time): {SystemInfo.FormatBytes(_settings.TotalBytesFreed)}");
+        return sb.ToString().TrimEnd();
     }
 
     private static long DirSize(string path)

@@ -200,6 +200,91 @@ public class VsCodeWorkspaceCleanerTests : IDisposable
             $$"""{"folder":"{{folderUri}}"}""");
 }
 
+// ── Prefetch cleaner — localizer keys + catalog placement ─────────────────────
+
+public class PrefetchCleanerTests
+{
+    [Fact]
+    public void PrefetchKeys_ExistInEnglish()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        Assert.NotEqual("cleaner.prefetch.name",        Localizer.T("cleaner.prefetch.name"));
+        Assert.NotEqual("cleaner.prefetch.description",  Localizer.T("cleaner.prefetch.description"));
+        Assert.NotEqual("cleaner.prefetch.risk",         Localizer.T("cleaner.prefetch.risk"));
+    }
+
+    [Fact]
+    public void PrefetchKeys_ExistInCzech()
+    {
+        AppLanguage original = Localizer.CurrentLanguage;
+        try
+        {
+            Localizer.SetLanguage(AppLanguage.Czech);
+            Assert.NotEqual("cleaner.prefetch.name",        Localizer.T("cleaner.prefetch.name"));
+            Assert.NotEqual("cleaner.prefetch.description",  Localizer.T("cleaner.prefetch.description"));
+            Assert.NotEqual("cleaner.prefetch.risk",         Localizer.T("cleaner.prefetch.risk"));
+        }
+        finally { Localizer.SetLanguage(original); }
+    }
+
+    [Fact]
+    public void PrefetchCleaner_PresentOnWindows()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(isWindows: true, isLinux: false, isMacOS: false);
+        Assert.Contains(cleaners, c => c.Name == "Windows Prefetch cache");
+    }
+
+    [Fact]
+    public void PrefetchCleaner_AbsentOnLinux()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(isWindows: false, isLinux: true, isMacOS: false);
+        Assert.DoesNotContain(cleaners, c => c.Name == "Windows Prefetch cache");
+    }
+
+    [Fact]
+    public void PrefetchCleaner_AbsentOnMacOS()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(isWindows: false, isLinux: false, isMacOS: true);
+        Assert.DoesNotContain(cleaners, c => c.Name == "Windows Prefetch cache");
+    }
+
+    [Fact]
+    public void PrefetchCleaner_RequiresAdministratorAndIsNotRecommended()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(isWindows: true, isLinux: false, isMacOS: false);
+        var prefetch = cleaners.First(c => c.Name == "Windows Prefetch cache");
+        Assert.True(prefetch.RequiresAdministrator);
+        Assert.False(prefetch.IsRecommended);
+    }
+}
+
+// ── ScheduledTaskManager — security validation ────────────────────────────────
+
+public class ScheduledTaskManagerTests
+{
+    [Fact]
+    public void Create_PathWithDoubleQuote_ReturnsFalseWithError()
+    {
+        string badPath = @"C:\Program Files\My ""App""\pccleaner.exe";
+        bool ok = ScheduledTaskManager.Create(badPath, out string error);
+        Assert.False(ok);
+        Assert.False(string.IsNullOrEmpty(error));
+    }
+
+    [Fact]
+    public void Create_NormalPath_DoesNotFailOnQuoteCheck()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "pccleaner.exe");
+        ScheduledTaskManager.Create(path, out string error);
+        // Must not be the quote-validation error (may fail on schtasks availability — that's ok)
+        Assert.DoesNotContain("double-quote", error, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
 // ── SystemdTimerManager — security validation ─────────────────────────────────
 
 public class SystemdTimerManagerTests
