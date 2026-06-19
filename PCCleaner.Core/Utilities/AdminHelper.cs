@@ -9,10 +9,11 @@ internal static class AdminHelper
 {
     public static bool IsRunningAsAdministrator()
     {
+        if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            return Environment.UserName == "root";
+
         if (!OperatingSystem.IsWindows())
-        {
             return false;
-        }
 
         try
         {

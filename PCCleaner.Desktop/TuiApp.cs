@@ -69,16 +69,25 @@ internal sealed class TuiApp
     public void Run()
     {
         Application.Init();
+        // Save Application.Top immediately after Init — on Linux, Application.Run(splash)
+        // clears it so it's null by the time we reach BuildUi.
+        var mainTop = Application.Top ?? new Toplevel
+        {
+            X = 0, Y = 0,
+            Width  = Dim.Fill(),
+            Height = Dim.Fill()
+        };
         ShowSplash();
-        BuildUi();
-        Application.Run();
+        BuildUi(mainTop);
+        Application.Run(mainTop);
         Application.Shutdown();
     }
 
     // ── Splash screen ──────────────────────────────────────────────────────────
     private void ShowSplash()
     {
-        var splash = new Window("")
+        // Toplevel (not Window) is the correct root-view type; Window adds a border we don't want
+        var splash = new Toplevel
         {
             X = 0, Y = 0,
             Width  = Dim.Fill(),
@@ -93,8 +102,15 @@ internal sealed class TuiApp
             }
         };
 
-        // Any key skips the splash
-        splash.KeyPress += (e) => { Application.RequestStop(); e.Handled = true; };
+        // timerToken is assigned below; key-press cancels the timer so it can't fire
+        // RequestStop() a second time and close the main window.
+        object? timerToken = null;
+        splash.KeyPress += (e) =>
+        {
+            if (timerToken != null) Application.MainLoop.RemoveTimeout(timerToken);
+            Application.RequestStop();
+            e.Handled = true;
+        };
 
         string[] logo =
         {
@@ -174,7 +190,7 @@ internal sealed class TuiApp
 
         int wave = 0, tick = 0, totalTicks = 28;
 
-        Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(80), _ =>
+        timerToken = Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(80), _ =>
         {
             tick++;
 
@@ -210,9 +226,8 @@ internal sealed class TuiApp
     }
 
     // ── Main UI ────────────────────────────────────────────────────────────────
-    private void BuildUi()
+    private void BuildUi(Toplevel top)
     {
-        var top = Application.Top;
         top.ColorScheme = SchemeContent;
 
         // ── Menu bar ──────────────────────────────────────────────────────────
@@ -602,8 +617,8 @@ internal sealed class TuiApp
 
         _isRunning       = true;
         _cancelRequested = false;
-        _btnScan.Text    = "⊠ Cancel";
-        _btnClean.Text   = "⊠ Cancel";
+        _btnScan.Text    = "[X] Cancel";
+        _btnClean.Text   = "[X] Cancel";
 
         SetOutput(previewOnly ? "Scanning...\n\n" : "Cleaning...\n\n");
 
@@ -700,7 +715,7 @@ internal sealed class TuiApp
             ConfirmCleaner = _ =>
             {
                 if (!isCancelled()) return true;
-                append("\n⊠ Cancelled by user.\n");
+                append("\n[X] Cancelled by user.\n");
                 return false;
             }
         };
