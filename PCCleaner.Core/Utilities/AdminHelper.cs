@@ -10,7 +10,7 @@ internal static class AdminHelper
     public static bool IsRunningAsAdministrator()
     {
         if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
-            return Environment.UserName == "root";
+            return Environment.IsPrivilegedProcess; // true when effective UID == 0 (works with sudo too)
 
         if (!OperatingSystem.IsWindows())
             return false;
