@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Test
+        run: dotnet test PCCleanerTests --no-restore -c Release
+
+      - name: Publish Windows x64
+        run: |
+          dotnet publish PCCleaner.Desktop \
+            -c Release -r win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o publish/win
+
+      - name: Publish Linux x64
+        run: |
+          dotnet publish PCCleaner.Desktop \
+            -c Release -r linux-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -o publish/linux
+
+      - name: Rename artifacts
+        run: |
+          mv publish/win/PCCleaner.Desktop.exe  publish/PCCleaner-win-x64.exe
+          mv publish/linux/PCCleaner.Desktop    publish/PCCleaner-linux-x64
+          chmod +x publish/PCCleaner-linux-x64
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "PC Cleaner ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            publish/PCCleaner-win-x64.exe
+            publish/PCCleaner-linux-x64
