@@ -22,6 +22,11 @@ internal static class ScheduledTaskManager
     public static bool Create(string exePath, out string error)
     {
         error = string.Empty;
+        if (exePath.Contains('"'))
+        {
+            error = "Executable path must not contain double-quote characters.";
+            return false;
+        }
         try
         {
             string args = $"/Create /TN \"{TaskName}\" /TR \"\\\"{exePath}\\\" --auto-clean\" /SC WEEKLY /D SUN /ST 09:00 /F";

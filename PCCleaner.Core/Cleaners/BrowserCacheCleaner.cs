@@ -178,23 +178,60 @@ internal sealed class BrowserCacheCleaner : ICleaner, ICleanerWarningProvider
 
     private static IEnumerable<string> GetLinuxBrowserCachePaths()
     {
-        string cache = SystemInfo.GetUnixUserCachePath();
+        string cache  = SystemInfo.GetUnixUserCachePath();
+        string home   = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string flatpak = Path.Combine(home, ".var", "app");
 
-        string[] directCachePaths =
+        // Native installs (system packages, tarballs, RPM)
+        foreach (string profileDir in EnumerateDirectories(Path.Combine(cache, "google-chrome")))
         {
-            Path.Combine(cache, "google-chrome"),
-            Path.Combine(cache, "chromium"),
-            Path.Combine(cache, "microsoft-edge"),
-            Path.Combine(cache, "BraveSoftware", "Brave-Browser"),
-            Path.Combine(cache, "vivaldi"),
-            Path.Combine(cache, "opera"),
-            Path.Combine(cache, "opera-stable"),
-            Path.Combine(cache, "mozilla", "firefox")
-        };
+            yield return Path.Combine(profileDir, "Cache");
+            yield return Path.Combine(profileDir, "Code Cache");
+            yield return Path.Combine(profileDir, "GPUCache");
+        }
+        foreach (string profileDir in EnumerateDirectories(Path.Combine(cache, "chromium")))
+        {
+            yield return Path.Combine(profileDir, "Cache");
+            yield return Path.Combine(profileDir, "Code Cache");
+        }
+        yield return Path.Combine(cache, "microsoft-edge");
+        yield return Path.Combine(cache, "BraveSoftware", "Brave-Browser");
+        yield return Path.Combine(cache, "vivaldi");
+        yield return Path.Combine(cache, "opera");
+        yield return Path.Combine(cache, "opera-stable");
 
-        foreach (string path in directCachePaths)
+        // Native Firefox — enumerate profiles so we only delete cache2, not crash-reports etc.
+        foreach (string profileDir in EnumerateDirectories(Path.Combine(cache, "mozilla", "firefox")))
         {
-            yield return path;
+            yield return Path.Combine(profileDir, "cache2");
+            yield return Path.Combine(profileDir, "startupCache");
+        }
+
+        // Flatpak installs — primary install method on Fedora/Nobara
+        foreach (string profileDir in EnumerateDirectories(
+            Path.Combine(flatpak, "com.google.Chrome", "cache", "google-chrome")))
+        {
+            yield return Path.Combine(profileDir, "Cache");
+            yield return Path.Combine(profileDir, "Code Cache");
+            yield return Path.Combine(profileDir, "GPUCache");
+        }
+        foreach (string profileDir in EnumerateDirectories(
+            Path.Combine(flatpak, "org.chromium.Chromium", "cache", "chromium")))
+        {
+            yield return Path.Combine(profileDir, "Cache");
+            yield return Path.Combine(profileDir, "Code Cache");
+        }
+        yield return Path.Combine(flatpak, "com.brave.Browser",    "cache", "BraveSoftware", "Brave-Browser");
+        yield return Path.Combine(flatpak, "com.microsoft.Edge",   "cache", "microsoft-edge");
+        yield return Path.Combine(flatpak, "com.opera.Opera",      "cache", "opera");
+        yield return Path.Combine(flatpak, "com.vivaldi.Vivaldi",  "cache", "vivaldi");
+
+        // Flatpak Firefox — enumerate profiles
+        foreach (string profileDir in EnumerateDirectories(
+            Path.Combine(flatpak, "org.mozilla.firefox", "cache", "mozilla", "firefox")))
+        {
+            yield return Path.Combine(profileDir, "cache2");
+            yield return Path.Combine(profileDir, "startupCache");
         }
     }
 

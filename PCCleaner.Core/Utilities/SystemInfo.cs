@@ -109,9 +109,15 @@ internal static class SystemInfo
             return Path.Combine(home, "Library", "Caches");
         }
 
-        return string.IsNullOrWhiteSpace(xdgCacheHome)
-            ? Path.Combine(home, ".cache")
-            : xdgCacheHome;
+        if (string.IsNullOrWhiteSpace(xdgCacheHome))
+            return Path.Combine(home, ".cache");
+
+        // Canonicalize to prevent path traversal via a crafted XDG_CACHE_HOME value
+        string canonical = Path.GetFullPath(xdgCacheHome);
+        if (!canonical.StartsWith(home, StringComparison.Ordinal))
+            return Path.Combine(home, ".cache");
+
+        return canonical;
     }
 
     public static IReadOnlyList<string> GetSafeUnixCachePaths()
