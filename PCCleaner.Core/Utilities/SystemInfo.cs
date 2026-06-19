@@ -109,15 +109,12 @@ internal static class SystemInfo
             return Path.Combine(home, "Library", "Caches");
         }
 
-        if (string.IsNullOrWhiteSpace(xdgCacheHome))
+        // XDG spec requires an absolute path (must start with /).
+        // Reject relative paths — they resolve against CWD and could traverse to unintended locations.
+        if (string.IsNullOrWhiteSpace(xdgCacheHome) || !xdgCacheHome.StartsWith('/'))
             return Path.Combine(home, ".cache");
 
-        // Canonicalize to prevent path traversal via a crafted XDG_CACHE_HOME value
-        string canonical = Path.GetFullPath(xdgCacheHome);
-        if (!canonical.StartsWith(home, StringComparison.Ordinal))
-            return Path.Combine(home, ".cache");
-
-        return canonical;
+        return xdgCacheHome;
     }
 
     public static IReadOnlyList<string> GetSafeUnixCachePaths()
