@@ -8,7 +8,8 @@ internal sealed class AppSettings
     public string       Language        { get; set; } = "English";
     public double       AgeHours        { get; set; } = 24;
     public bool         IncludeRecent   { get; set; } = false;
-    public List<string> CheckedCleaners { get; set; } = new();
+    public List<string> CheckedCleaners  { get; set; } = new();
+    public long         TotalBytesFreed  { get; set; } = 0;
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

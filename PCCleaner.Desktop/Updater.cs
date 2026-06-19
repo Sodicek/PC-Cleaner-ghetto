@@ -106,7 +106,14 @@ internal static class Updater
         File.Copy(tmpPath, exePath, overwrite: true);
         TryDelete(tmpPath);
 
-        try { Process.Start("chmod", $"+x \"{exePath}\"")?.WaitForExit(2000); }
+        try
+        {
+            Process.Start(new ProcessStartInfo("chmod")
+            {
+                UseShellExecute = false,
+                ArgumentList    = { "+x", exePath }
+            })?.WaitForExit(2000);
+        }
         catch { /* chmod not critical */ }
 
         Process.Start(new ProcessStartInfo { FileName = exePath, UseShellExecute = false });

@@ -388,3 +388,6 @@ artifacts/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# AI assistant local config
+.claude/

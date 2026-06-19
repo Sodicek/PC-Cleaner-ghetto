@@ -36,6 +36,7 @@ internal sealed class TuiApp
     private CheckBox   _includeRecentBox = null!;
     private TextView   _outputView       = null!;
     private StatusItem _freedItem        = null!;
+    private StatusItem _totalFreedItem  = null!;
     private StatusBar  _statusBar        = null!;
     private Button     _btnScan          = null!;
     private Button     _btnClean         = null!;
@@ -235,22 +236,23 @@ internal sealed class TuiApp
         top.ColorScheme = SchemeContent;
 
         // ── Menu bar ──────────────────────────────────────────────────────────
-        var menuLang    = new MenuItem("_Language: EN / CS", "", ToggleLanguage);
-        var menuUpdates = new MenuItem("_Check for Updates", "", ShowUpdateDialog);
-        var menuQuit    = new MenuItem("_Quit", "Ctrl+Q", () => Application.RequestStop());
+        var menuLang     = new MenuItem("_Language: EN / CS", "", ToggleLanguage);
+        var menuUpdates  = new MenuItem("_Check for Updates", "", ShowUpdateDialog);
+        var menuOverview = new MenuItem("_Disk Overview...", "", ShowDiskOverviewDialog);
+        var menuQuit     = new MenuItem("_Quit", "Ctrl+Q", () => Application.RequestStop());
+        var menuSchedule = new MenuItem("_Schedule Auto-Clean...", "", ShowScheduleDialog);
         MenuItem[] fileItems;
         if (SystemInfo.IsWindows)
         {
-            var menuSchedule = new MenuItem("_Schedule Auto-Clean...", "", ShowScheduleDialog);
-            var menuAdmin    = new MenuItem("_Restart as Administrator", "", RestartAsAdmin);
+            var menuAdmin = new MenuItem("_Restart as Administrator", "", RestartAsAdmin);
 #pragma warning disable CS8625
-            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuAdmin, null, menuUpdates, null, menuQuit };
+            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuAdmin, null, menuOverview, null, menuUpdates, null, menuQuit };
 #pragma warning restore CS8625
         }
         else
         {
 #pragma warning disable CS8625
-            fileItems = new MenuItem[] { menuLang, null, menuUpdates, null, menuQuit };
+            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuOverview, null, menuUpdates, null, menuQuit };
 #pragma warning restore CS8625
         }
 
@@ -426,12 +428,17 @@ internal sealed class TuiApp
 
         // ── Status bar ────────────────────────────────────────────────────────
         string adminBadge = _isAdmin ? "● admin" : "○ user";
-        _freedItem = new StatusItem(Key.Null, "Freed: —", null);
+        _freedItem      = new StatusItem(Key.Null, "Freed: —", null);
+        string totalLabel = _settings.TotalBytesFreed > 0
+            ? $"All-time: {SystemInfo.FormatBytes(_settings.TotalBytesFreed)}"
+            : "All-time: —";
+        _totalFreedItem = new StatusItem(Key.Null, totalLabel, null);
         _statusBar = new StatusBar(new StatusItem[]
         {
             new(Key.Q | Key.CtrlMask, "~Ctrl+Q~ Quit", () => Application.RequestStop()),
             new(Key.Null, $"{_cleaners.Count} cleaners   ·   {SystemInfo.MachineName}   ·   {adminBadge}", null),
-            _freedItem
+            _freedItem,
+            _totalFreedItem
         })
         { ColorScheme = SchemePrimary };
         top.Add(_statusBar);
@@ -503,6 +510,14 @@ internal sealed class TuiApp
     private void UpdateFreed(long bytes)
     {
         _freedItem.Title = bytes == 0 ? "Freed: —" : $"Freed: {SystemInfo.FormatBytes(bytes)}";
+        _statusBar.SetNeedsDisplay();
+    }
+
+    private void UpdateTotalFreed()
+    {
+        _totalFreedItem.Title = _settings.TotalBytesFreed > 0
+            ? $"All-time: {SystemInfo.FormatBytes(_settings.TotalBytesFreed)}"
+            : "All-time: —";
         _statusBar.SetNeedsDisplay();
     }
 
@@ -589,22 +604,28 @@ internal sealed class TuiApp
 
     private static void ShowScheduleDialog()
     {
-        // FIX: detect dotnet host — can't register schtasks with a dotnet run path
         string? processPath = Environment.ProcessPath;
+        // Reject dotnet host — can't schedule schtasks/systemd with a `dotnet run` path
         bool isDirectExe = !string.IsNullOrEmpty(processPath)
-            && processPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
             && !Path.GetFileNameWithoutExtension(processPath)
                     .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
 
         if (!isDirectExe)
         {
             MessageBox.Query("Schedule",
-                "Scheduled tasks require running the compiled .exe directly.\n" +
-                "Build Release and launch PCCleaner.Desktop.exe.",
+                "Scheduled tasks require running the compiled binary directly.\n" +
+                "Build Release and launch the published PCCleaner executable.",
                 "OK");
             return;
         }
 
+        if (SystemInfo.IsLinux)
+        {
+            ShowLinuxScheduleDialog(processPath!);
+            return;
+        }
+
+        // Windows — schtasks-based dialog
         bool   exists     = ScheduledTaskManager.Exists();
         string statusText = exists ? "Status: Scheduled (weekly, Sunday 09:00)" : "Status: Not scheduled";
 
@@ -641,6 +662,129 @@ internal sealed class TuiApp
         dialog.AddButton(btnRemove);
         dialog.AddButton(btnClose);
         Application.Run(dialog);
+    }
+
+    private static void ShowLinuxScheduleDialog(string processPath)
+    {
+        bool   exists     = SystemdTimerManager.Exists();
+        string statusText = exists ? "Status: Enabled (weekly, Sunday 09:00)" : "Status: Not scheduled";
+
+        var dialog = new Dialog("Auto-Clean — systemd timer", 64, 12);
+        dialog.Add(new Label("Unit:   pc-cleaner.timer  (~/.config/systemd/user/)") { X = 2, Y = 1, ColorScheme = SchemeContent });
+        dialog.Add(new Label(statusText) { X = 2, Y = 2, ColorScheme = exists ? SchemePrimary : SchemeDim });
+        dialog.Add(new Label("Runs recommended cleaners silently via --auto-clean.")  { X = 2, Y = 4, ColorScheme = SchemeDim });
+        dialog.Add(new Label("Requires a running systemd --user session (GNOME/KDE).") { X = 2, Y = 5, ColorScheme = SchemeDim });
+
+        var btnCreate = new Button("Enable weekly timer") { ColorScheme = SchemeAccent };
+        var btnRemove = new Button("Remove timer")        { ColorScheme = SchemeDim };
+        var btnClose  = new Button("Close");
+
+        btnCreate.Clicked += () =>
+        {
+            if (SystemdTimerManager.Create(processPath, out string err))
+                MessageBox.Query("Scheduled", "systemd timer enabled.\nRuns every Sunday at 09:00.", "OK");
+            else
+                MessageBox.ErrorQuery("Error", $"Could not enable timer:\n{err}", "OK");
+            Application.RequestStop();
+        };
+
+        btnRemove.Clicked += () =>
+        {
+            if (!exists) { MessageBox.Query("Schedule", "No timer to remove.", "OK"); return; }
+            if (SystemdTimerManager.Remove(out string err))
+                MessageBox.Query("Schedule", "Timer removed.", "OK");
+            else
+                MessageBox.ErrorQuery("Error", $"Could not remove timer:\n{err}", "OK");
+            Application.RequestStop();
+        };
+
+        btnClose.Clicked += () => Application.RequestStop();
+        dialog.AddButton(btnCreate);
+        dialog.AddButton(btnRemove);
+        dialog.AddButton(btnClose);
+        Application.Run(dialog);
+    }
+
+    private void ShowDiskOverviewDialog()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        var dialog = new Dialog("  Disk Overview  ", 72, 24);
+        var output = new TextView
+        {
+            X = 1, Y = 1,
+            Width    = Dim.Fill(1),
+            Height   = Dim.Fill(4),
+            ReadOnly = true,
+            WordWrap = false,
+            ColorScheme = SchemeDim,
+            Text = "Scanning home directory..."
+        };
+        dialog.Add(output);
+
+        var btnClose = new Button("Close");
+        btnClose.Clicked += () => Application.RequestStop();
+        dialog.AddButton(btnClose);
+
+        _ = Task.Run(() =>
+        {
+            var sb = new System.Text.StringBuilder();
+            try
+            {
+                var snapshot = SystemInfo.GetCurrentDriveSnapshot();
+                if (snapshot != null)
+                    sb.AppendLine($"Drive free : {SystemInfo.FormatBytes(snapshot.FreeBytes)}");
+
+                if (_settings.TotalBytesFreed > 0)
+                    sb.AppendLine($"All-time freed by PC Cleaner: {SystemInfo.FormatBytes(_settings.TotalBytesFreed)}");
+
+                sb.AppendLine();
+                sb.AppendLine($"Top folders in {home}");
+                sb.AppendLine(new string('─', 60));
+
+                var dirs = Directory.Exists(home)
+                    ? Directory.GetDirectories(home)
+                    : Array.Empty<string>();
+
+                var results = new List<(string name, long size)>();
+                foreach (string dir in dirs)
+                    results.Add((Path.GetFileName(dir), DirSize(dir)));
+
+                results.Sort((a, b) => b.size.CompareTo(a.size));
+                long maxSize = results.Count > 0 ? Math.Max(results[0].size, 1) : 1;
+
+                foreach (var (name, size) in results.Take(16))
+                {
+                    int    barLen  = (int)((double)size / maxSize * 22);
+                    string bar     = new string('█', barLen) + new string('░', 22 - barLen);
+                    string sizeStr = SystemInfo.FormatBytes(size).PadLeft(10);
+                    sb.AppendLine($"  {bar}  {sizeStr}  {name}");
+                }
+            }
+            catch (Exception ex)
+            {
+                sb.AppendLine($"Error: {ex.Message}");
+            }
+
+            Application.MainLoop.Invoke(() => { output.Text = sb.ToString(); });
+        });
+
+        Application.Run(dialog);
+    }
+
+    private static long DirSize(string path)
+    {
+        long total = 0;
+        try
+        {
+            foreach (string f in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                try { total += new FileInfo(f).Length; }
+                catch { }
+            }
+        }
+        catch { }
+        return total;
     }
 
     // ── Selection helpers ──────────────────────────────────────────────────────
@@ -708,11 +852,16 @@ internal sealed class TuiApp
             void   OnFreed(long b)     => Application.MainLoop.Invoke(() => UpdateFreed(b));
             bool   IsCancelled()       => _cancelRequested;
 
-            ExecuteClean(selected, options, Append, OnFreed, IsCancelled);
+            long freed = ExecuteClean(selected, options, Append, OnFreed, IsCancelled);
 
-            // Restore UI on main thread
             Application.MainLoop.Invoke(() =>
             {
+                if (!options.PreviewOnly && freed > 0 && !_cancelRequested)
+                {
+                    _settings.TotalBytesFreed += freed;
+                    _settings.Save();
+                    UpdateTotalFreed();
+                }
                 _isRunning     = false;
                 _btnScan.Text  = "Scan (preview)";
                 _btnClean.Text = "Run clean";
@@ -761,7 +910,7 @@ internal sealed class TuiApp
         return confirmed;
     }
 
-    private static void ExecuteClean(
+    private static long ExecuteClean(
         IReadOnlyList<ICleaner> cleaners,
         CleanOptions            options,
         Action<string>          append,
@@ -809,5 +958,7 @@ internal sealed class TuiApp
             else if (!string.IsNullOrEmpty(saveError))
                 append($"Report error: {saveError}\n");
         }
+
+        return totalFreed;
     }
 }
