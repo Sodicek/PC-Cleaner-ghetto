@@ -361,3 +361,30 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local publish/smoke-test output
+artifacts/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux / vim swap files
+*~
+*.swp
+*.swo
+
+# JetBrains Rider
+.idea/
+
+# VS Code workspace settings (keep extensions.json if committed)
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# Windows thumbnail cache
+Thumbs.db
+ehthumbs.db
+Desktop.ini

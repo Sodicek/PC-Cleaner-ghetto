@@ -123,4 +123,40 @@ public class LocalizerTests
             Localizer.SetLanguage(original);
         }
     }
+
+    [Fact]
+    public void UnixUserCacheKeys_ExistInBothLanguages()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        Assert.NotEqual("cleaner.unixUserCache.name", Localizer.T("cleaner.unixUserCache.name"));
+
+        AppLanguage original = Localizer.CurrentLanguage;
+        try
+        {
+            Localizer.SetLanguage(AppLanguage.Czech);
+            Assert.NotEqual("cleaner.unixUserCache.name", Localizer.T("cleaner.unixUserCache.name"));
+        }
+        finally
+        {
+            Localizer.SetLanguage(original);
+        }
+    }
+
+    [Fact]
+    public void MacUserLogsKeys_ExistInBothLanguages()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        Assert.NotEqual("cleaner.macUserLogs.name", Localizer.T("cleaner.macUserLogs.name"));
+
+        AppLanguage original = Localizer.CurrentLanguage;
+        try
+        {
+            Localizer.SetLanguage(AppLanguage.Czech);
+            Assert.NotEqual("cleaner.macUserLogs.name", Localizer.T("cleaner.macUserLogs.name"));
+        }
+        finally
+        {
+            Localizer.SetLanguage(original);
+        }
+    }
 }

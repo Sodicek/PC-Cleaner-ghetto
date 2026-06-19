@@ -102,7 +102,8 @@ internal sealed class BrowserCacheCleaner : ICleaner, ICleanerWarningProvider
             Path.Combine(localAppData, "Google", "Chrome for Testing", "User Data"),
             Path.Combine(localAppData, "Chromium", "User Data"),
             Path.Combine(localAppData, "Microsoft", "Edge", "User Data"),
-            Path.Combine(localAppData, "BraveSoftware", "Brave-Browser", "User Data")
+            Path.Combine(localAppData, "BraveSoftware", "Brave-Browser", "User Data"),
+            Path.Combine(localAppData, "Vivaldi", "User Data")
         };
 
         foreach (string root in userDataRoots)
@@ -173,8 +174,7 @@ internal sealed class BrowserCacheCleaner : ICleaner, ICleanerWarningProvider
 
     private static IEnumerable<string> GetLinuxBrowserCachePaths()
     {
-        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string cache = Path.Combine(home, ".cache");
+        string cache = SystemInfo.GetUnixUserCachePath();
 
         string[] directCachePaths =
         {
@@ -182,6 +182,9 @@ internal sealed class BrowserCacheCleaner : ICleaner, ICleanerWarningProvider
             Path.Combine(cache, "chromium"),
             Path.Combine(cache, "microsoft-edge"),
             Path.Combine(cache, "BraveSoftware", "Brave-Browser"),
+            Path.Combine(cache, "vivaldi"),
+            Path.Combine(cache, "opera"),
+            Path.Combine(cache, "opera-stable"),
             Path.Combine(cache, "mozilla", "firefox")
         };
 
@@ -193,8 +196,7 @@ internal sealed class BrowserCacheCleaner : ICleaner, ICleanerWarningProvider
 
     private static IEnumerable<string> GetMacBrowserCachePaths()
     {
-        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        string cache = Path.Combine(home, "Library", "Caches");
+        string cache = SystemInfo.GetUnixUserCachePath();
 
         string[] directCachePaths =
         {

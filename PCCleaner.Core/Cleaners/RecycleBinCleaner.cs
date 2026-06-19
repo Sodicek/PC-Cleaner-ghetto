@@ -9,6 +9,7 @@ internal sealed class RecycleBinCleaner : ICleaner
     private const uint ShrbNoConfirmation = 0x00000001;
     private const uint ShrbNoProgressUi = 0x00000002;
     private const uint ShrbNoSound = 0x00000004;
+    private const int HResultFileNotFound = unchecked((int)0x80070002);
 
     public string Name => Localizer.T("cleaner.recycleBin.name");
 
@@ -60,7 +61,7 @@ internal sealed class RecycleBinCleaner : ICleaner
         }
 
         int response = SHEmptyRecycleBin(IntPtr.Zero, null, ShrbNoConfirmation | ShrbNoProgressUi | ShrbNoSound);
-        if (response != 0)
+        if (response != 0 && response != HResultFileNotFound)
         {
             result.AddFailure();
         }

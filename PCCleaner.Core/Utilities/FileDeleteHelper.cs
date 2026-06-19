@@ -4,6 +4,13 @@ namespace PCCleaner.Utilities;
 
 internal static class FileDeleteHelper
 {
+    private static readonly EnumerationOptions TopDirectoryEnumeration = new()
+    {
+        IgnoreInaccessible = true,
+        RecurseSubdirectories = false,
+        ReturnSpecialDirectories = false
+    };
+
     public static CleanResult CleanDirectory(string cleanerName, string directoryPath, CleanOptions options, bool deleteRootDirectory = false)
     {
         CleanResult result = new(cleanerName, options.PreviewOnly);
@@ -35,7 +42,11 @@ internal static class FileDeleteHelper
 
         foreach (string searchPattern in searchPatterns)
         {
-            foreach (string filePath in SafeEnumerateFiles(directoryPath, searchPattern, recursive))
+            IEnumerable<string> filePaths = recursive
+                ? SafeEnumerateFilesRecursive(directoryPath, searchPattern)
+                : SafeEnumerateFiles(directoryPath, searchPattern);
+
+            foreach (string filePath in filePaths)
             {
                 TryDeleteFile(filePath, result, options);
             }
@@ -56,6 +67,11 @@ internal static class FileDeleteHelper
     {
         foreach (string childDirectory in SafeEnumerateDirectories(directoryPath))
         {
+            if (IsDirectoryLink(childDirectory))
+            {
+                continue;
+            }
+
             CleanResult childResult = CleanDirectory(result.CleanerName, childDirectory, options, deleteRootDirectory: true);
             result.Merge(childResult);
         }
@@ -67,6 +83,12 @@ internal static class FileDeleteHelper
         {
             FileInfo file = new(filePath);
             long size = file.Exists ? file.Length : 0;
+
+            if (file.LinkTarget is not null)
+            {
+                result.AddSkippedFile();
+                return;
+            }
 
             if (file.Exists && options.ShouldSkipBecauseRecent(file))
             {
@@ -109,40 +131,95 @@ internal static class FileDeleteHelper
         }
     }
 
-    private static IEnumerable<string> SafeEnumerateFiles(string directoryPath)
+    internal static bool IsDirectoryLink(string directoryPath)
     {
         try
         {
-            return Directory.EnumerateFiles(directoryPath);
+            DirectoryInfo directory = new(directoryPath);
+            return directory.LinkTarget is not null
+                || directory.Attributes.HasFlag(FileAttributes.ReparsePoint);
         }
         catch
         {
-            return Enumerable.Empty<string>();
+            return true;
         }
     }
 
-    private static IEnumerable<string> SafeEnumerateFiles(string directoryPath, string searchPattern, bool recursive)
+    private static IEnumerable<string> SafeEnumerateFiles(string directoryPath)
     {
+        string[] files;
+
         try
         {
-            SearchOption searchOption = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            return Directory.EnumerateFiles(directoryPath, searchPattern, searchOption);
+            files = Directory.GetFiles(directoryPath, "*", TopDirectoryEnumeration);
         }
         catch
         {
-            return Enumerable.Empty<string>();
+            yield break;
+        }
+
+        foreach (string file in files)
+        {
+            yield return file;
+        }
+    }
+
+    private static IEnumerable<string> SafeEnumerateFiles(string directoryPath, string searchPattern)
+    {
+        string[] files;
+
+        try
+        {
+            files = Directory.GetFiles(directoryPath, searchPattern, TopDirectoryEnumeration);
+        }
+        catch
+        {
+            yield break;
+        }
+
+        foreach (string file in files)
+        {
+            yield return file;
+        }
+    }
+
+    private static IEnumerable<string> SafeEnumerateFilesRecursive(string directoryPath, string searchPattern)
+    {
+        foreach (string filePath in SafeEnumerateFiles(directoryPath, searchPattern))
+        {
+            yield return filePath;
+        }
+
+        foreach (string childDirectory in SafeEnumerateDirectories(directoryPath))
+        {
+            if (IsDirectoryLink(childDirectory))
+            {
+                continue;
+            }
+
+            foreach (string filePath in SafeEnumerateFilesRecursive(childDirectory, searchPattern))
+            {
+                yield return filePath;
+            }
         }
     }
 
     private static IEnumerable<string> SafeEnumerateDirectories(string directoryPath)
     {
+        string[] directories;
+
         try
         {
-            return Directory.EnumerateDirectories(directoryPath);
+            directories = Directory.GetDirectories(directoryPath, "*", TopDirectoryEnumeration);
         }
         catch
         {
-            return Enumerable.Empty<string>();
+            yield break;
+        }
+
+        foreach (string directory in directories)
+        {
+            yield return directory;
         }
     }
 }

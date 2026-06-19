@@ -1,5 +1,7 @@
 namespace PCCleaner.Utilities;
 
+using System.Threading;
+
 internal enum AppLanguage
 {
     English,
@@ -11,7 +13,7 @@ internal static class Localizer
     private static readonly Dictionary<string, string> English = new()
     {
         ["app.title"] = "PC Cleaner",
-        ["app.subtitle"] = "Cache sweeper, temp folder broom, and tiny Windows cleanup console.",
+        ["app.subtitle"] = "Cache sweeper, temp folder broom, and tiny cross-platform cleanup console.",
         ["app.credit"] = "Created by soda144p",
         ["app.menuCredit"] = "Local author: {0}",
         ["system.detected"] = "Detected system: {0}",
@@ -19,6 +21,9 @@ internal static class Localizer
         ["system.machine"] = "Machine: {0}",
         ["platform.all"] = "all OS",
         ["platform.windows"] = "Windows",
+        ["platform.linux"] = "Linux",
+        ["platform.macos"] = "macOS",
+        ["platform.unixLike"] = "Linux/macOS",
         ["platform.unknown"] = "unknown OS",
         ["animation.frame1"] = "[          ] booting cleaner core",
         ["animation.frame2"] = "[##        ] scanning dusty corners",
@@ -33,7 +38,7 @@ internal static class Localizer
         ["animation.hold"] = "Intro {0}/{1}. Showing creator credit before the cleaner starts.",
         ["language.choose"] = "Choose language / Vyber jazyk: 1 = English, 2 = Czech: ",
         ["language.invalid"] = "Unknown choice, using English.",
-        ["admin.warning"] = "Not running as administrator. Some cleaners will skip protected locations. Use R in the menu to restart as admin.",
+        ["admin.warning"] = "Not running as administrator. Some supported cleaners will skip protected locations. Use R in the menu to restart as admin on Windows.",
         ["admin.restartConfirm"] = "Restart this program as administrator now? Windows will show a UAC prompt. (Y/N): ",
         ["admin.restartStarted"] = "Restarting as administrator. This window can be closed after the elevated one opens.",
         ["admin.restartFailed"] = "Could not restart as administrator: {0}",
@@ -56,8 +61,8 @@ internal static class Localizer
         ["menu.admin"] = "admin",
         ["menu.risk"] = "Risk",
         ["menu.unsupported"] = "unsupported here",
-        ["menu.help"] = "A = quick clean   P = preview quick   E = everything   W = wave intro   R = restart as admin   Q = quit   examples: 1 3 5 or 1,3,5",
-        ["prompt.choose"] = "Choose numbers, A quick, E everything, P preview quick, R admin, or Q quit: ",
+        ["menu.help"] = "A = quick clean   P = preview quick   E = everything for this OS   W = wave intro   R = restart as admin   Q = quit   examples: 1 3 5 or 1,3,5",
+        ["prompt.choose"] = "Choose numbers, A quick, E everything for this OS, P preview quick, R admin, or Q quit: ",
         ["prompt.more"] = "Run more cleaners? (Y/N): ",
         ["prompt.start"] = "Start cleaning? (Y/N): ",
         ["prompt.confirmPreview"] = "Are you sure you want to preview these cleaners? (Y/N): ",
@@ -108,6 +113,9 @@ internal static class Localizer
         ["cleaner.userTemp.name"] = "User temporary files",
         ["cleaner.userTemp.description"] = "Deletes files from the current user's temp folder.",
         ["cleaner.userTemp.risk"] = "Apps may recreate temp files; open installers or apps can fail if their temp files are in use.",
+        ["cleaner.unixUserCache.name"] = "Safe Linux/macOS cache buckets",
+        ["cleaner.unixUserCache.description"] = "Deletes targeted rebuildable caches like thumbnails, fontconfig, shader caches, pip cache, and selected macOS system cache buckets.",
+        ["cleaner.unixUserCache.risk"] = "Apps may rebuild these caches and launch a little slower after cleaning; close apps first when possible.",
         ["cleaner.windowsTemp.name"] = "Windows temporary files",
         ["cleaner.windowsTemp.description"] = "Deletes files from C:\\Windows\\Temp. Administrator rights may be needed.",
         ["cleaner.windowsTemp.risk"] = "Protected or in-use files may fail; running installs/updates should be closed first.",
@@ -118,8 +126,11 @@ internal static class Localizer
         ["cleaner.windowsLogs.description"] = "Deletes common .log, .tmp, and .old files from Windows temp-style log folders.",
         ["cleaner.windowsLogs.risk"] = "Troubleshooting history can be removed; admin rights are required.",
         ["cleaner.browserCache.name"] = "Browser caches",
-        ["cleaner.browserCache.description"] = "Deletes common Chrome, Edge, Brave, Opera, and Firefox cache folders.",
+        ["cleaner.browserCache.description"] = "Deletes common Chrome, Edge, Brave, Opera, Chromium, Vivaldi, and Firefox cache folders.",
         ["cleaner.browserCache.risk"] = "Browsers may reload websites more slowly and should be closed while cleaning.",
+        ["cleaner.macUserLogs.name"] = "macOS user logs",
+        ["cleaner.macUserLogs.description"] = "Deletes old .log, .trace, .crash, and .ips files from ~/Library/Logs.",
+        ["cleaner.macUserLogs.risk"] = "Troubleshooting history can be removed; recent files are skipped unless you disable the age filter.",
         ["cleaner.thumbnailCache.name"] = "Thumbnail cache",
         ["cleaner.thumbnailCache.description"] = "Deletes Windows Explorer thumbnail database files when they are not locked.",
         ["cleaner.thumbnailCache.risk"] = "Explorer may rebuild thumbnails later, causing temporary slowness.",
@@ -143,7 +154,7 @@ internal static class Localizer
     private static readonly Dictionary<string, string> Czech = new()
     {
         ["app.title"] = "PC Cleaner",
-        ["app.subtitle"] = "Maly konzolovy uklizec cache, docasnych souboru a Windows neporadku.",
+        ["app.subtitle"] = "Maly konzolovy uklizec cache, docasnych souboru a systemoveho neporadku napric OS.",
         ["app.credit"] = "Vytvoril soda144p",
         ["app.menuCredit"] = "Autor na tomto PC: {0}",
         ["system.detected"] = "Detekovany system: {0}",
@@ -151,6 +162,9 @@ internal static class Localizer
         ["system.machine"] = "Pocitac: {0}",
         ["platform.all"] = "vsechny OS",
         ["platform.windows"] = "Windows",
+        ["platform.linux"] = "Linux",
+        ["platform.macos"] = "macOS",
+        ["platform.unixLike"] = "Linux/macOS",
         ["platform.unknown"] = "neznamy OS",
         ["animation.frame1"] = "[          ] startuji cistici jadro",
         ["animation.frame2"] = "[##        ] hledam zaprasene kouty",
@@ -165,7 +179,7 @@ internal static class Localizer
         ["animation.hold"] = "Intro {0}/{1}. Pred startem ukazuji autora.",
         ["language.choose"] = "Choose language / Vyber jazyk: 1 = English, 2 = Czech: ",
         ["language.invalid"] = "Neznama volba, pouzivam anglictinu.",
-        ["admin.warning"] = "Program nebezi jako spravce. Nektere cistice preskoci chranena mista. V menu pouzij R pro restart jako spravce.",
+        ["admin.warning"] = "Program nebezi jako spravce. Nektere podporovane cistice preskoci chranena mista. V menu pouzij R pro restart jako spravce na Windows.",
         ["admin.restartConfirm"] = "Restartovat program jako spravce? Windows ukaze UAC potvrzeni. (A/N): ",
         ["admin.restartStarted"] = "Restartuji jako spravce. Tohle okno muzes zavrit, az se otevre nove.",
         ["admin.restartFailed"] = "Nepodarilo se restartovat jako spravce: {0}",
@@ -188,8 +202,8 @@ internal static class Localizer
         ["menu.admin"] = "spravce",
         ["menu.risk"] = "Riziko",
         ["menu.unsupported"] = "tady nepodporovano",
-        ["menu.help"] = "A = rychly uklid   P = nahled rychleho uklidu   E = vsechno   W = vlnove intro   R = restart jako spravce   Q = konec   priklady: 1 3 5 nebo 1,3,5",
-        ["prompt.choose"] = "Vyber cisla, A rychle, E vsechno, P nahled, R spravce, nebo Q konec: ",
+        ["menu.help"] = "A = rychly uklid   P = nahled rychleho uklidu   E = vse pro tento OS   W = vlnove intro   R = restart jako spravce   Q = konec   priklady: 1 3 5 nebo 1,3,5",
+        ["prompt.choose"] = "Vyber cisla, A rychle, E vse pro tento OS, P nahled, R spravce, nebo Q konec: ",
         ["prompt.more"] = "Spustit dalsi cistice? (A/N): ",
         ["prompt.start"] = "Zacit cistit? (A/N): ",
         ["prompt.confirmPreview"] = "Opravdu chces zobrazit nahled techto cisticu? (A/N): ",
@@ -240,6 +254,9 @@ internal static class Localizer
         ["cleaner.userTemp.name"] = "Docasne soubory uzivatele",
         ["cleaner.userTemp.description"] = "Odstrani soubory z docasne slozky aktualniho uzivatele.",
         ["cleaner.userTemp.risk"] = "Aplikace si docasne soubory znovu vytvori; otevrene instalatory nebo aplikace muzou selhat.",
+        ["cleaner.unixUserCache.name"] = "Bezpecne cache Linux/macOS",
+        ["cleaner.unixUserCache.description"] = "Odstrani cilene obnovitelne cache jako nahledy, fontconfig, shader cache, pip cache a vybrane systemove cache macOS.",
+        ["cleaner.unixUserCache.risk"] = "Aplikace si tyto cache znovu vytvori a po cisteni se mohou spoustet o trochu pomaleji; pokud to jde, zavri je.",
         ["cleaner.windowsTemp.name"] = "Docasne soubory Windows",
         ["cleaner.windowsTemp.description"] = "Odstrani soubory z C:\\Windows\\Temp. Mohou byt potreba prava spravce.",
         ["cleaner.windowsTemp.risk"] = "Chranene nebo pouzivane soubory mohou selhat; pred cistenim zavri instalace a aktualizace.",
@@ -250,8 +267,11 @@ internal static class Localizer
         ["cleaner.windowsLogs.description"] = "Odstrani bezne soubory .log, .tmp, .old a .bak z logovacich/temp slozek Windows.",
         ["cleaner.windowsLogs.risk"] = "Muze zmizet historie pro reseni problemu; vyzaduje prava spravce.",
         ["cleaner.browserCache.name"] = "Cache prohlizecu",
-        ["cleaner.browserCache.description"] = "Odstrani cache slozky pro Chrome, Edge, Brave, Operu a Firefox.",
+        ["cleaner.browserCache.description"] = "Odstrani cache slozky pro Chrome, Edge, Brave, Operu, Chromium, Vivaldi a Firefox.",
         ["cleaner.browserCache.risk"] = "Weby se muzou nacitat pomaleji; prohlizece by mely byt zavrene.",
+        ["cleaner.macUserLogs.name"] = "Uzivatelske logy macOS",
+        ["cleaner.macUserLogs.description"] = "Odstrani stare soubory .log, .trace, .crash a .ips z ~/Library/Logs.",
+        ["cleaner.macUserLogs.risk"] = "Muze zmizet historie pro reseni problemu; cerstve soubory se preskoci, pokud nevypnes vekovy filtr.",
         ["cleaner.thumbnailCache.name"] = "Cache nahledu",
         ["cleaner.thumbnailCache.description"] = "Odstrani databaze nahledu Pruzkumnika Windows, pokud nejsou zamcene.",
         ["cleaner.thumbnailCache.risk"] = "Pruzkumnik bude nahledy znovu stavet, docasne muze zpomalit.",
@@ -272,11 +292,13 @@ internal static class Localizer
         ["cleaner.duplicates.risk"] = "Osobni soubory mohou byt smazane, pokud jsou presne duplicity; nejdriv pouzij nahled."
     };
 
-    public static AppLanguage CurrentLanguage { get; private set; } = AppLanguage.English;
+    private static readonly AsyncLocal<AppLanguage?> LanguageOverride = new();
+
+    public static AppLanguage CurrentLanguage => LanguageOverride.Value ?? AppLanguage.English;
 
     public static void SetLanguage(AppLanguage language)
     {
-        CurrentLanguage = language;
+        LanguageOverride.Value = language;
     }
 
     public static string T(string key)

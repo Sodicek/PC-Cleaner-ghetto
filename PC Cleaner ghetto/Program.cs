@@ -1,4 +1,3 @@
-using PCCleaner.Cleaners;
 using PCCleaner.Core;
 using PCCleaner.Utilities;
 
@@ -8,30 +7,7 @@ internal static class Program
 {
     private const int DefaultMinimumAgeHours = 24;
 
-    private static readonly IReadOnlyList<ICleaner> Cleaners = new List<ICleaner>
-    {
-        new DirectoryCleaner(
-            "cleaner.userTemp.name",
-            "cleaner.userTemp.description",
-            "cleaner.userTemp.risk",
-            new[] { Path.GetTempPath() }),
-        new DirectoryCleaner(
-            "cleaner.windowsTemp.name",
-            "cleaner.windowsTemp.description",
-            "cleaner.windowsTemp.risk",
-            new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "Temp") },
-            platform: CleanerPlatform.Windows,
-            requiresAdministrator: true),
-        new CrashDumpCleaner(),
-        new WindowsLogCleaner(),
-        new BrowserCacheCleaner(),
-        new ThumbnailCacheCleaner(),
-        new RecentItemsCleaner(),
-        new RecycleBinCleaner(),
-        new StartupCleaner(),
-        new ComponentStoreCleanupCleaner(),
-        new DuplicateFileCleaner()
-    };
+    private static readonly IReadOnlyList<ICleaner> Cleaners = CleanerCatalog.CreateCleanersForCurrentPlatform();
 
     private static void Main(string[] args)
     {
@@ -74,7 +50,7 @@ internal static class Program
             ConsoleUi.WriteWarning(Localizer.T("status.ageFilter", settings.MinimumFileAge.TotalHours));
         }
 
-        if (!AdminHelper.IsRunningAsAdministrator())
+        if (HasSupportedAdminCleaners() && !AdminHelper.IsRunningAsAdministrator())
         {
             ConsoleUi.WriteWarning(Localizer.T("admin.warning"));
         }
@@ -324,63 +300,47 @@ internal static class Program
             || string.Equals(value, "a", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool HasSupportedAdminCleaners()
+    {
+        return Cleaners.Any(cleaner => cleaner.RequiresAdministrator && SystemInfo.IsSupported(cleaner.Platform));
+    }
+
     private static CleanRunReport RunCleaners(IReadOnlyList<ICleaner> cleaners, CleanOptions options)
     {
         Console.WriteLine();
-        CleanRunReport report = new(new CleanResult(Localizer.T("result.total"), options.PreviewOnly));
-        report.SetDiskBefore(SystemInfo.GetCurrentDriveSnapshot());
-
-        foreach (ICleaner cleaner in cleaners)
+        CleanerRunner runner = new();
+        CleanerRunCallbacks callbacks = new()
         {
-            if (!SystemInfo.IsSupported(cleaner.Platform))
+            Warning = ConsoleUi.WriteWarning,
+            ConfirmCleaner = cleaner =>
             {
-                string reason = Localizer.T("status.unsupportedPlatform", SystemInfo.PlatformName(cleaner.Platform), SystemInfo.Description);
+                ConsoleUi.WritePrompt(options.PreviewOnly
+                    ? Localizer.T("prompt.confirmCleanerPreview", cleaner.Name)
+                    : Localizer.T("prompt.confirmCleanerClean", cleaner.Name));
+
+                return IsYes(Console.ReadLine());
+            },
+            Starting = cleaner => ConsoleUi.WriteStep(Localizer.T("status.running", cleaner.Name)),
+            Completed = ConsoleUi.WriteResult,
+            Skipped = (cleaner, reason) =>
+            {
+                if (string.Equals(reason, Localizer.T("status.adminRequired"), StringComparison.Ordinal))
+                {
+                    ConsoleUi.WriteWarning(Localizer.T("status.skippingAdmin", cleaner.Name));
+                    return;
+                }
+
+                if (string.Equals(reason, Localizer.T("status.notConfirmed"), StringComparison.Ordinal))
+                {
+                    ConsoleUi.WriteWarning(Localizer.T("status.skippedByUser", cleaner.Name));
+                    return;
+                }
+
                 ConsoleUi.WriteWarning($"{cleaner.Name}: {reason}");
-                report.AddSkipped(cleaner.Name, reason);
-                continue;
             }
+        };
 
-            if (cleaner.RequiresAdministrator && !AdminHelper.IsRunningAsAdministrator())
-            {
-                ConsoleUi.WriteWarning(Localizer.T("status.skippingAdmin", cleaner.Name));
-                report.AddSkipped(cleaner.Name, Localizer.T("status.adminRequired"));
-                continue;
-            }
-
-            PrintPreRunWarnings(cleaner, options);
-
-            ConsoleUi.WritePrompt(options.PreviewOnly
-                ? Localizer.T("prompt.confirmCleanerPreview", cleaner.Name)
-                : Localizer.T("prompt.confirmCleanerClean", cleaner.Name));
-
-            if (!IsYes(Console.ReadLine()))
-            {
-                ConsoleUi.WriteWarning(Localizer.T("status.skippedByUser", cleaner.Name));
-                report.AddSkipped(cleaner.Name, Localizer.T("status.notConfirmed"));
-                continue;
-            }
-
-            ConsoleUi.WriteStep(Localizer.T("status.running", cleaner.Name));
-            CleanResult result = cleaner.Clean(options);
-            report.AddResult(result);
-            ConsoleUi.WriteResult(result);
-        }
-
-        report.SetDiskAfter(SystemInfo.GetCurrentDriveSnapshot());
-        return report;
-    }
-
-    private static void PrintPreRunWarnings(ICleaner cleaner, CleanOptions options)
-    {
-        if (cleaner is not ICleanerWarningProvider warningProvider)
-        {
-            return;
-        }
-
-        foreach (string warning in warningProvider.GetWarnings(options))
-        {
-            ConsoleUi.WriteWarning(warning);
-        }
+        return runner.Run(cleaners, options, callbacks);
     }
 
     private static void SaveReport(CleanRunReport report, CleanOptions options)

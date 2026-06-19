@@ -295,3 +295,107 @@ public class CleanRunReportTests
         Assert.Null(report.DiskAfter);
     }
 }
+
+public class CleanerRunnerTests
+{
+    [Fact]
+    public void Run_ConfirmedCleaner_AddsResultToReport()
+    {
+        var cleaner = new TestCleaner(result =>
+        {
+            result.AddDeletedFile(256);
+            result.AddDeletedDirectory();
+        });
+        CleanerRunner runner = new();
+
+        CleanRunReport report = runner.Run(new[] { cleaner }, new CleanOptions(previewOnly: true, TimeSpan.Zero, includeRecentFiles: true));
+
+        Assert.Single(report.Results);
+        Assert.Equal(1, cleaner.RunCount);
+        Assert.Equal(1, report.Total.FilesDeleted);
+        Assert.Equal(1, report.Total.DirectoriesDeleted);
+        Assert.Equal(256, report.Total.BytesFreed);
+    }
+
+    [Fact]
+    public void Run_WhenConfirmationReturnsFalse_SkipsCleanerWithoutRunning()
+    {
+        var cleaner = new TestCleaner(_ => { });
+        List<string> skipped = new();
+        CleanerRunner runner = new();
+        CleanerRunCallbacks callbacks = new()
+        {
+            ConfirmCleaner = _ => false,
+            Skipped = (skippedCleaner, reason) => skipped.Add($"{skippedCleaner.Name}:{reason}")
+        };
+
+        CleanRunReport report = runner.Run(new[] { cleaner }, new CleanOptions(previewOnly: true, TimeSpan.Zero, includeRecentFiles: true), callbacks);
+
+        Assert.Equal(0, cleaner.RunCount);
+        Assert.Empty(report.Results);
+        Assert.Single(report.SkippedCleaners);
+        Assert.Single(skipped);
+    }
+
+    [Fact]
+    public void Run_WarningProvider_EmitsWarningsBeforeCleanerRuns()
+    {
+        var cleaner = new WarningTestCleaner();
+        List<string> events = new();
+        CleanerRunner runner = new();
+        CleanerRunCallbacks callbacks = new()
+        {
+            Warning = warning => events.Add($"warning:{warning}"),
+            Starting = startingCleaner => events.Add($"start:{startingCleaner.Name}")
+        };
+
+        runner.Run(new[] { cleaner }, new CleanOptions(previewOnly: true, TimeSpan.Zero, includeRecentFiles: true), callbacks);
+
+        Assert.Equal(new[] { "warning:close stuff first", $"start:{cleaner.Name}" }, events);
+    }
+
+    private class TestCleaner : ICleaner
+    {
+        private readonly Action<CleanResult> _mutateResult;
+
+        public TestCleaner(Action<CleanResult> mutateResult)
+        {
+            _mutateResult = mutateResult;
+        }
+
+        public string Name => "Test Cleaner";
+
+        public string Description => "Test cleaner";
+
+        public string Risk => "Test risk";
+
+        public CleanerPlatform Platform => CleanerPlatform.All;
+
+        public bool RequiresAdministrator => false;
+
+        public bool IsRecommended => true;
+
+        public int RunCount { get; private set; }
+
+        public CleanResult Clean(CleanOptions options)
+        {
+            RunCount++;
+            CleanResult result = new(Name, options.PreviewOnly);
+            _mutateResult(result);
+            return result;
+        }
+    }
+
+    private sealed class WarningTestCleaner : TestCleaner, ICleanerWarningProvider
+    {
+        public WarningTestCleaner()
+            : base(_ => { })
+        {
+        }
+
+        public IReadOnlyList<string> GetWarnings(CleanOptions options)
+        {
+            return new[] { "close stuff first" };
+        }
+    }
+}

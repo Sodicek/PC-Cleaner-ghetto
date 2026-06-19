@@ -3,5 +3,8 @@ namespace PCCleaner.Core;
 internal enum CleanerPlatform
 {
     All,
-    Windows
+    Windows,
+    Linux,
+    MacOS,
+    UnixLike
 }

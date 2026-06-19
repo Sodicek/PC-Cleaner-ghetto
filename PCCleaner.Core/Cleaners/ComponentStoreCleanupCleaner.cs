@@ -41,7 +41,10 @@ internal sealed class ComponentStoreCleanupCleaner : ICleaner
             using Process? process = Process.Start(startInfo);
             process?.WaitForExit(10_000);
 
-            if (process is null || process.ExitCode != 0)
+            bool succeeded = process is not null
+                && (!process.HasExited || process.ExitCode == 0);
+
+            if (!succeeded)
             {
                 result.AddFailure();
             }
