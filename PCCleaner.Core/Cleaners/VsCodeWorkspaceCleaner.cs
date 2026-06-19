@@ -73,7 +73,7 @@ internal sealed class VsCodeWorkspaceCleaner : ICleaner
         }
     }
 
-    private static bool IsOrphaned(string workspaceDir)
+    internal static bool IsOrphaned(string workspaceDir)
     {
         try
         {

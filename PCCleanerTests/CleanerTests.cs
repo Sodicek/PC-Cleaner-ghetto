@@ -288,6 +288,25 @@ public class SystemInfoTests
         Assert.Equal(Path.Combine("/Users/tester", "Library", "Caches"), path);
     }
 
+    [Theory]
+    [InlineData("relative/path")]
+    [InlineData("./local")]
+    [InlineData("../etc/passwd")]
+    public void GetUnixUserCachePath_RelativePath_FallsBackToDotCache(string relPath)
+    {
+        string result = SystemInfo.GetUnixUserCachePath("/home/tester", relPath, isMacOS: false);
+        Assert.Equal(Path.Combine("/home/tester", ".cache"), result);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void GetUnixUserCachePath_EmptyOrWhitespace_FallsBackToDotCache(string xdg)
+    {
+        string result = SystemInfo.GetUnixUserCachePath("/home/tester", xdg, isMacOS: false);
+        Assert.Equal(Path.Combine("/home/tester", ".cache"), result);
+    }
+
     [Fact]
     public void GetSafeUnixCachePaths_CurrentPlatform_DoesNotReturnWholeCacheRoot()
     {
