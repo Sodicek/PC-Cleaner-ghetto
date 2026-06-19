@@ -46,6 +46,10 @@ internal sealed class TuiApp
     private volatile bool _isRunning       = false;
     private volatile bool _cancelRequested = false;
 
+    // Update
+    private UpdateInfo? _pendingUpdate  = null;
+    private bool        _updateChecked  = false;
+
     // ── Starfield ─────────────────────────────────────────────────────────────
     private static readonly char[] BrightPool = { '*', '+', '•', '✦' };
     private static readonly char[] DimPool    = { '·', '·', '.', ' ', ' ', ' ', ' ', ' ' };
@@ -231,21 +235,22 @@ internal sealed class TuiApp
         top.ColorScheme = SchemeContent;
 
         // ── Menu bar ──────────────────────────────────────────────────────────
-        var menuLang = new MenuItem("_Language: EN / CS", "", ToggleLanguage);
-        var menuQuit = new MenuItem("_Quit", "Ctrl+Q", () => Application.RequestStop());
+        var menuLang    = new MenuItem("_Language: EN / CS", "", ToggleLanguage);
+        var menuUpdates = new MenuItem("_Check for Updates", "", ShowUpdateDialog);
+        var menuQuit    = new MenuItem("_Quit", "Ctrl+Q", () => Application.RequestStop());
         MenuItem[] fileItems;
         if (SystemInfo.IsWindows)
         {
             var menuSchedule = new MenuItem("_Schedule Auto-Clean...", "", ShowScheduleDialog);
             var menuAdmin    = new MenuItem("_Restart as Administrator", "", RestartAsAdmin);
 #pragma warning disable CS8625
-            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuAdmin, null, menuQuit };
+            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuAdmin, null, menuUpdates, null, menuQuit };
 #pragma warning restore CS8625
         }
         else
         {
 #pragma warning disable CS8625
-            fileItems = new MenuItem[] { menuLang, null, menuQuit };
+            fileItems = new MenuItem[] { menuLang, null, menuUpdates, null, menuQuit };
 #pragma warning restore CS8625
         }
 
@@ -402,6 +407,23 @@ internal sealed class TuiApp
 
         top.Add(win);
 
+        // ── Background update check ───────────────────────────────────────────
+        _ = Task.Run(async () =>
+        {
+            var info = await UpdateChecker.CheckAsync();
+            Application.MainLoop.Invoke(() =>
+            {
+                _pendingUpdate = info;
+                _updateChecked = true;
+                if (info is not null)
+                {
+                    AppendOutput($"\n★  Update available: v{info.LatestVersion}  —  File › Check for Updates\n");
+                    _freedItem.Title = $"★ v{info.LatestVersion} ready";
+                    _statusBar.SetNeedsDisplay();
+                }
+            });
+        });
+
         // ── Status bar ────────────────────────────────────────────────────────
         string adminBadge = _isAdmin ? "● admin" : "○ user";
         _freedItem = new StatusItem(Key.Null, "Freed: —", null);
@@ -507,6 +529,62 @@ internal sealed class TuiApp
             Application.RequestStop();
         else
             MessageBox.ErrorQuery("Error", $"Could not restart as administrator:\n{error}", "OK");
+    }
+
+    private void ShowUpdateDialog()
+    {
+        if (!_updateChecked)
+        {
+            MessageBox.Query("Updates", $"Checking for updates...\nCurrent version: v{AppVersion.Current}\n\nTry again in a moment.", "OK");
+            return;
+        }
+
+        if (_pendingUpdate is null)
+        {
+            MessageBox.Query("Up to date", $"You are running the latest version.\n\nv{AppVersion.Current}", "OK");
+            return;
+        }
+
+        var update = _pendingUpdate;
+        var dialog = new Dialog($"Update available: v{update.LatestVersion}", 62, 12);
+        dialog.Add(new Label($"Current version : v{AppVersion.Current}")   { X = 2, Y = 1, ColorScheme = SchemeDim });
+        dialog.Add(new Label($"Latest version  : v{update.LatestVersion}") { X = 2, Y = 2, ColorScheme = SchemePrimary });
+        dialog.Add(new Label(update.DownloadUrl is not null
+            ? "Ready to download and install automatically."
+            : "No binary for this platform — visit the release page.")
+            { X = 2, Y = 4, ColorScheme = SchemeDim });
+
+        var btnInstall = new Button(update.DownloadUrl is not null ? "Download & Install" : "Open release page")
+            { ColorScheme = SchemeAccent };
+        var btnCancel  = new Button("Later") { ColorScheme = SchemeDim };
+
+        btnInstall.Clicked += () =>
+        {
+            Application.RequestStop();
+
+            if (update.DownloadUrl is null)
+            {
+                // No binary — open browser
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    { FileName = update.ReleasePageUrl, UseShellExecute = true }); }
+                catch { SetOutput($"Visit: {update.ReleasePageUrl}"); }
+                return;
+            }
+
+            SetOutput($"Updating to v{update.LatestVersion}...\n");
+            _ = Task.Run(async () =>
+            {
+                void Progress(string msg) => Application.MainLoop.Invoke(() => AppendOutput(msg + "\n"));
+                var (ok, err) = await Updater.DownloadAndApplyAsync(update, Progress);
+                if (!ok)
+                    Application.MainLoop.Invoke(() => AppendOutput($"[X] {err}\n"));
+            });
+        };
+
+        btnCancel.Clicked += () => Application.RequestStop();
+        dialog.AddButton(btnCancel);
+        dialog.AddButton(btnInstall);
+        Application.Run(dialog);
     }
 
     private static void ShowScheduleDialog()
