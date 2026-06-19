@@ -148,7 +148,10 @@ internal static class Localizer
         ["cleaner.component.risk"] = "Windows update cleanup can take time and may remove rollback files for old components.",
         ["cleaner.duplicates.name"] = "Duplicate files in Documents",
         ["cleaner.duplicates.description"] = "Deletes duplicate files only when their size and SHA-256 hash match. Keeps the first file found.",
-        ["cleaner.duplicates.risk"] = "Personal files can be deleted if they are exact duplicates; preview first."
+        ["cleaner.duplicates.risk"] = "Personal files can be deleted if they are exact duplicates; preview first.",
+        ["cleaner.scheduledTask.name"] = "Scheduled auto-clean task",
+        ["cleaner.scheduledTask.description"] = "Removes the PC Cleaner Auto-Clean scheduled task from Windows Task Scheduler.",
+        ["cleaner.scheduledTask.risk"] = "Only the PC Cleaner scheduled task is removed; no other scheduled tasks are affected."
     };
 
     private static readonly Dictionary<string, string> Czech = new()
@@ -289,7 +292,10 @@ internal static class Localizer
         ["cleaner.component.risk"] = "Cisteni aktualizaci muze trvat a muze odstranit rollback soubory starych komponent.",
         ["cleaner.duplicates.name"] = "Duplicitni soubory v Dokumentech",
         ["cleaner.duplicates.description"] = "Odstrani duplicity jen pri shodne velikosti a otisku SHA-256. Prvni nalezeny soubor ponecha.",
-        ["cleaner.duplicates.risk"] = "Osobni soubory mohou byt smazane, pokud jsou presne duplicity; nejdriv pouzij nahled."
+        ["cleaner.duplicates.risk"] = "Osobni soubory mohou byt smazane, pokud jsou presne duplicity; nejdriv pouzij nahled.",
+        ["cleaner.scheduledTask.name"] = "Naplanovana automaticka cistka",
+        ["cleaner.scheduledTask.description"] = "Odstrani naplanovany ukol PC Cleaner Auto-Clean z Planovace uloh Windows.",
+        ["cleaner.scheduledTask.risk"] = "Odebere se pouze ukol PC Cleaner; ostatni naplanovane ukoly nejsou dotceny."
     };
 
     private static readonly AsyncLocal<AppLanguage?> LanguageOverride = new();

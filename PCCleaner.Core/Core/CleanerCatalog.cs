@@ -43,7 +43,8 @@ internal static class CleanerCatalog
             new RecycleBinCleaner(),
             new StartupCleaner(),
             new ComponentStoreCleanupCleaner(),
-            new DuplicateFileCleaner()
+            new DuplicateFileCleaner(),
+            new ScheduledTaskCleaner()
         };
     }
 }

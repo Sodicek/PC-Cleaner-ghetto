@@ -116,9 +116,13 @@ internal sealed class BrowserCacheCleaner : ICleaner, ICleanerWarningProvider
             }
         }
 
-        yield return Path.Combine(localAppData, "Opera Software", "Opera Stable", "Cache");
-        yield return Path.Combine(localAppData, "Opera Software", "Opera Stable", "Code Cache");
-        yield return Path.Combine(localAppData, "Opera Software", "Opera Stable", "GPUCache");
+        foreach (string operaVariant in new[] { "Opera Stable", "Opera GX Stable", "Opera Beta", "Opera Developer" })
+        {
+            string operaRoot = Path.Combine(localAppData, "Opera Software", operaVariant);
+            yield return Path.Combine(operaRoot, "Cache");
+            yield return Path.Combine(operaRoot, "Code Cache");
+            yield return Path.Combine(operaRoot, "GPUCache");
+        }
     }
 
     private static IEnumerable<string> GetFirefoxCachePaths(string localAppData)

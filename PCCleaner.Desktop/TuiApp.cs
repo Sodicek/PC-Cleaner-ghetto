@@ -8,11 +8,10 @@ namespace PCCleaner.Desktop;
 internal sealed class TuiApp
 {
     // ── Palette ───────────────────────────────────────────────────────────────
-    // Soft purple / indigo chrome on black — vibey, not hacker
-    private static readonly ColorScheme SchemePurple = Cs(Color.Magenta,       Color.Black, Color.BrightMagenta);
-    private static readonly ColorScheme SchemeAccent = Cs(Color.BrightMagenta, Color.Black, Color.White);
-    private static readonly ColorScheme SchemeWhite  = Cs(Color.White,         Color.Black, Color.White);
-    private static readonly ColorScheme SchemeDim    = Cs(Color.Gray,          Color.Black, Color.White);
+    private static readonly ColorScheme SchemePrimary = Cs(Color.BrightCyan,  Color.Black, Color.White);
+    private static readonly ColorScheme SchemeAccent  = Cs(Color.White,       Color.Black, Color.BrightCyan);
+    private static readonly ColorScheme SchemeContent = Cs(Color.Cyan,        Color.Black, Color.BrightCyan);
+    private static readonly ColorScheme SchemeDim     = Cs(Color.DarkGray,    Color.Black, Color.White);
 
     private static ColorScheme Cs(Color normal, Color bg, Color focused)
     {
@@ -27,64 +26,243 @@ internal sealed class TuiApp
 
     // ── State ──────────────────────────────────────────────────────────────────
     private readonly IReadOnlyList<ICleaner> _cleaners;
-    private readonly List<CheckBox> _checkBoxes = new();
-    private TextField _ageField         = null!;
-    private CheckBox  _includeRecentBox = null!;
-    private TextView  _outputView       = null!;
+    private readonly List<CheckBox>          _checkBoxes      = new();
+    private readonly bool                    _initialPreview;
+    private readonly bool                    _isAdmin;
+    private          AppSettings             _settings;
+    private          AppLanguage             _language;
 
-    public TuiApp()
+    private TextField  _ageField         = null!;
+    private CheckBox   _includeRecentBox = null!;
+    private TextView   _outputView       = null!;
+    private StatusItem _freedItem        = null!;
+    private StatusBar  _statusBar        = null!;
+    private Button     _btnScan          = null!;
+    private Button     _btnClean         = null!;
+
+    private readonly StringBuilder _outputBuf = new();
+
+    // Cancel support
+    private volatile bool _isRunning       = false;
+    private volatile bool _cancelRequested = false;
+
+    // ── Starfield ─────────────────────────────────────────────────────────────
+    private static readonly char[] BrightPool = { '*', '+', '•', '✦' };
+    private static readonly char[] DimPool    = { '·', '·', '.', ' ', ' ', ' ', ' ', ' ' };
+    private readonly Random  _rng      = new();
+    private          char[]  _fastRow  = Array.Empty<char>();
+    private          char[]  _slowRow  = Array.Empty<char>();
+    private          int     _slowTick = 0;
+    private          Label   _animFast = null!;
+    private          Label   _animSlow = null!;
+
+    internal TuiApp(AppSettings settings, bool initialPreview = false)
     {
-        _cleaners = CleanerCatalog.CreateCleanersForCurrentPlatform();
+        _settings       = settings;
+        _initialPreview = initialPreview;
+        _language       = settings.GetLanguage();
+        _isAdmin        = AdminHelper.IsRunningAsAdministrator();
+        _cleaners       = CleanerCatalog.CreateCleanersForCurrentPlatform();
     }
 
     // ── Entry point ────────────────────────────────────────────────────────────
     public void Run()
     {
         Application.Init();
+        ShowSplash();
         BuildUi();
         Application.Run();
         Application.Shutdown();
     }
 
-    // ── UI ─────────────────────────────────────────────────────────────────────
+    // ── Splash screen ──────────────────────────────────────────────────────────
+    private void ShowSplash()
+    {
+        var splash = new Window("")
+        {
+            X = 0, Y = 0,
+            Width  = Dim.Fill(),
+            Height = Dim.Fill(),
+            ColorScheme = new ColorScheme
+            {
+                Normal    = Terminal.Gui.Attribute.Make(Color.BrightCyan, Color.Black),
+                Focus     = Terminal.Gui.Attribute.Make(Color.BrightCyan, Color.Black),
+                HotNormal = Terminal.Gui.Attribute.Make(Color.BrightCyan, Color.Black),
+                HotFocus  = Terminal.Gui.Attribute.Make(Color.BrightCyan, Color.Black),
+                Disabled  = Terminal.Gui.Attribute.Make(Color.DarkGray,   Color.Black)
+            }
+        };
+
+        // Any key skips the splash
+        splash.KeyPress += (e) => { Application.RequestStop(); e.Handled = true; };
+
+        string[] logo =
+        {
+            @"  ██████╗  ██████╗    ██████╗██╗     ███████╗ █████╗ ███╗   ██╗███████╗██████╗ ",
+            @"  ██╔══██╗██╔════╝   ██╔════╝██║     ██╔════╝██╔══██╗████╗  ██║██╔════╝██╔══██╗",
+            @"  ██████╔╝██║        ██║     ██║     █████╗  ███████║██╔██╗ ██║█████╗  ██████╔╝",
+            @"  ██╔═══╝ ██║        ██║     ██║     ██╔══╝  ██╔══██║██║╚██╗██║██╔══╝  ██╔══██╗",
+            @"  ██║     ╚██████╗   ╚██████╗███████╗███████╗██║  ██║██║ ╚████║███████╗██║  ██║",
+            @"  ╚═╝      ╚═════╝    ╚═════╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝"
+        };
+
+        // Star particles — use actual terminal width, not hardcoded 79
+        int starCount = 40;
+        int termW     = Math.Max(Console.WindowWidth - 4, 40);
+        int termH     = Math.Max(Console.WindowHeight - 4, 20);
+        var sx    = new float[starCount];
+        var sy    = new float[starCount];
+        var sspd  = new float[starCount];
+        var sch   = new char[starCount];
+        char[] spool = { '*', '·', '+', '.', '•' };
+
+        var rng2 = new Random();
+        for (int i = 0; i < starCount; i++)
+        {
+            sx[i]   = rng2.Next(termW);
+            sy[i]   = rng2.NextSingle() * termH;
+            sspd[i] = 0.15f + rng2.NextSingle() * 0.25f;
+            sch[i]  = spool[rng2.Next(spool.Length)];
+        }
+
+        Label[] starLabels = new Label[starCount];
+        for (int i = 0; i < starCount; i++)
+        {
+            starLabels[i] = new Label(" ") { X = (int)sx[i], Y = (int)sy[i], ColorScheme = SchemeDim };
+            splash.Add(starLabels[i]);
+        }
+
+        // Logo (added after stars → draws on top)
+        int logoY = Math.Max(2, (termH - logo.Length - 6) / 2);
+        Label[] logoLabels = new Label[logo.Length];
+        for (int r = 0; r < logo.Length; r++)
+        {
+            logoLabels[r] = new Label(logo[r])
+            {
+                X = Pos.Center(), Y = logoY + r,
+                ColorScheme = SchemePrimary
+            };
+            splash.Add(logoLabels[r]);
+        }
+
+        int tlY = logoY + logo.Length + 1;
+        splash.Add(new Label("sweeping your drive clean since forever")
+            { X = Pos.Center(), Y = tlY,     ColorScheme = SchemeDim });
+        splash.Add(new Label($"by soda144p  ·  {SystemInfo.MachineName}  ·  {SystemInfo.CurrentPlatformName}")
+            { X = Pos.Center(), Y = tlY + 1, ColorScheme = SchemeDim });
+        splash.Add(new Label("press any key to skip")
+            { X = Pos.Center(), Y = tlY + 2, ColorScheme = SchemeDim });
+
+        // Progress bar — both labels same initial width so centering is stable
+        int barY     = tlY + 4;
+        const string BarEmpty = "[                            ]"; // 30 chars
+        var barShell = new Label(BarEmpty) { X = Pos.Center(), Y = barY, ColorScheme = SchemeDim };
+        var barFill  = new Label(BarEmpty) { X = Pos.Center(), Y = barY, ColorScheme = SchemePrimary };
+        splash.Add(barShell, barFill);
+
+        string[] bootMsgs =
+        {
+            "booting cleaner core...",
+            "scanning dusty corners...",
+            "warming up cache broom...",
+            "loading cleaners...",
+            "almost shiny...",
+            "ready ✦"
+        };
+        var statusLbl = new Label(bootMsgs[0]) { X = Pos.Center(), Y = barY + 1, ColorScheme = SchemeDim };
+        splash.Add(statusLbl);
+
+        int wave = 0, tick = 0, totalTicks = 28;
+
+        Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(80), _ =>
+        {
+            tick++;
+
+            // Move stars
+            for (int i = 0; i < starCount; i++)
+            {
+                sy[i] += sspd[i];
+                if (sy[i] >= termH) { sy[i] = 0; sx[i] = rng2.Next(termW); }
+                starLabels[i].X    = (int)sx[i];
+                starLabels[i].Y    = (int)sy[i];
+                starLabels[i].Text = sch[i].ToString();
+            }
+
+            // Wave colour on logo rows
+            wave = (wave + 1) % (logo.Length * 2);
+            for (int r = 0; r < logo.Length; r++)
+                logoLabels[r].ColorScheme = ((wave + r) % (logo.Length * 2)) < logo.Length
+                    ? SchemePrimary : SchemeContent;
+
+            // Progress bar
+            int filled = Math.Min(28, (tick * 28) / totalTicks);
+            barFill.Text = "[" + new string('█', filled) + new string(' ', 28 - filled) + "]";
+
+            // Boot message
+            statusLbl.Text = bootMsgs[Math.Min(bootMsgs.Length - 1, (tick * bootMsgs.Length) / totalTicks)];
+
+            if (tick >= totalTicks) { Application.RequestStop(); return false; }
+            return true;
+        });
+
+        // FIX: run splash directly as its own toplevel — do NOT add it to Application.Top
+        Application.Run(splash);
+    }
+
+    // ── Main UI ────────────────────────────────────────────────────────────────
     private void BuildUi()
     {
         var top = Application.Top;
-        top.ColorScheme = SchemeWhite;
+        top.ColorScheme = SchemeContent;
 
-        // Menu bar ─────────────────────────────────────────────────────────────
-        var menu = new MenuBar(new MenuBarItem[]
+        // ── Menu bar ──────────────────────────────────────────────────────────
+        var menuLang = new MenuItem("_Language: EN / CS", "", ToggleLanguage);
+        var menuQuit = new MenuItem("_Quit", "Ctrl+Q", () => Application.RequestStop());
+        MenuItem[] fileItems;
+        if (SystemInfo.IsWindows)
         {
-            new("_File", new MenuItem[]
-            {
-                new("_Quit", "Ctrl+Q", () => Application.RequestStop())
-            })
-        })
-        { ColorScheme = SchemePurple };
-        top.Add(menu);
+            var menuSchedule = new MenuItem("_Schedule Auto-Clean...", "", ShowScheduleDialog);
+            var menuAdmin    = new MenuItem("_Restart as Administrator", "", RestartAsAdmin);
+#pragma warning disable CS8625
+            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuAdmin, null, menuQuit };
+#pragma warning restore CS8625
+        }
+        else
+        {
+#pragma warning disable CS8625
+            fileItems = new MenuItem[] { menuLang, null, menuQuit };
+#pragma warning restore CS8625
+        }
 
-        // Main window ──────────────────────────────────────────────────────────
-        var win = new Window("◆  PC Cleaner Ghetto  ◆")
+        top.Add(new MenuBar(new MenuBarItem[] { new("_File", fileItems) })
+            { ColorScheme = SchemePrimary });
+
+        // ── Main window ───────────────────────────────────────────────────────
+        var win = new Window("◆  PC Cleaner  ◆")
         {
             X = 0, Y = 1,
             Width  = Dim.Fill(),
             Height = Dim.Fill() - 1,
-            ColorScheme = SchemePurple
+            ColorScheme = SchemePrimary
         };
 
-        // Subtitle + separator
-        string sub  = $"  {SystemInfo.LocalAuthor}   ·   {SystemInfo.CurrentPlatformName}   ·   {SystemInfo.MachineName}";
-        string rule = "  " + new string('·', 120);
-        win.Add(new Label(sub)  { X = 0, Y = 0, Width = Dim.Fill(), ColorScheme = SchemeDim });
-        win.Add(new Label(rule) { X = 0, Y = 1, Width = Dim.Fill(), ColorScheme = SchemeDim });
+        win.Add(new Label($"  {SystemInfo.LocalAuthor}   ·   {SystemInfo.CurrentPlatformName}   ·   {SystemInfo.MachineName}")
+            { X = 0, Y = 0, Width = Dim.Fill(), ColorScheme = SchemeDim });
 
-        // ── Cleaners panel ─────────────────────────────────────────────────────
+        // Starfield strip
+        InitStarfield(200);
+        _animSlow = new Label("") { X = 0, Y = 1, Width = Dim.Fill(), ColorScheme = SchemeDim };
+        _animFast = new Label("") { X = 0, Y = 1, Width = Dim.Fill(), ColorScheme = SchemePrimary };
+        win.Add(_animSlow, _animFast);
+        Application.MainLoop.AddTimeout(TimeSpan.FromMilliseconds(70), StarfieldTick);
+
+        // ── Cleaners panel ────────────────────────────────────────────────────
         var cleanersFrame = new FrameView("  Cleaners  ")
         {
-            X = 0, Y = 2,
+            X = 0, Y = 3,
             Width  = Dim.Percent(62),
             Height = Dim.Fill() - 9,
-            ColorScheme = SchemePurple
+            ColorScheme = SchemePrimary
         };
 
         var scroll = new ScrollView
@@ -94,32 +272,39 @@ internal sealed class TuiApp
             Height = Dim.Fill(),
             ShowHorizontalScrollIndicator = false,
             ShowVerticalScrollIndicator   = true,
-            ColorScheme = SchemeWhite
+            ColorScheme = SchemeContent
         };
 
         for (int i = 0; i < _cleaners.Count; i++)
         {
             ICleaner cleaner   = _cleaners[i];
             bool     supported = SystemInfo.IsSupported(cleaner.Platform);
+            bool     canRun    = supported && (!cleaner.RequiresAdministrator || _isAdmin);
 
-            string badge = cleaner.RequiresAdministrator ? "admin  "
-                         : cleaner.IsRecommended        ? "safe   "
+            string badge = cleaner.RequiresAdministrator && !_isAdmin ? "admin! "
+                         : cleaner.RequiresAdministrator              ? "admin  "
+                         : cleaner.IsRecommended                      ? "safe   "
                          : "manual ";
 
-            string label = $"  {badge}  {cleaner.Name}";
-
-            ColorScheme scheme = !supported                    ? SchemeDim
+            ColorScheme scheme = !canRun                       ? SchemeDim
                                : cleaner.RequiresAdministrator ? SchemeAccent
                                : !cleaner.IsRecommended        ? SchemeDim
-                               : SchemeWhite;
+                               : SchemeContent;
 
-            var cb = new CheckBox(label)
+            bool initialChecked = canRun && (
+                _settings.CheckedCleaners.Count > 0
+                    ? _settings.CheckedCleaners.Contains(cleaner.GetType().Name)
+                    : cleaner.IsRecommended);
+
+            var cb = new CheckBox($"  {badge}  {cleaner.Name}")
             {
                 X = 0, Y = i,
-                Checked     = supported && cleaner.IsRecommended,
-                Enabled     = supported,
+                Checked     = initialChecked,
+                Enabled     = canRun,
                 ColorScheme = scheme
             };
+            // FIX: wire toggle → save settings
+            cb.Toggled += _ => SaveSettings();
             _checkBoxes.Add(cb);
             scroll.Add(cb);
         }
@@ -128,48 +313,51 @@ internal sealed class TuiApp
         cleanersFrame.Add(scroll);
         win.Add(cleanersFrame);
 
-        // ── Controls panel ─────────────────────────────────────────────────────
+        // ── Controls panel ────────────────────────────────────────────────────
         var controlsFrame = new FrameView("  Controls  ")
         {
             X = Pos.Right(cleanersFrame) + 1,
-            Y = 2,
+            Y = 3,
             Width  = Dim.Fill(),
             Height = Dim.Fill() - 9,
-            ColorScheme = SchemePurple
+            ColorScheme = SchemePrimary
         };
 
-        // Primary actions first
-        var btnScan  = new Button("Scan (preview)") { X = 1, Y = 0, ColorScheme = SchemeAccent };
-        var btnClean = new Button("Run clean")      { X = 1, Y = 2, ColorScheme = SchemeAccent };
+        _btnScan  = new Button("Scan (preview)") { X = 1, Y = 0, ColorScheme = SchemeAccent };
+        _btnClean = new Button("Run clean")      { X = 1, Y = 2, ColorScheme = SchemeAccent };
 
-        controlsFrame.Add(new Label("· · · · · · · · · · · ·") { X = 1, Y = 4, ColorScheme = SchemeDim });
-        controlsFrame.Add(new Label("Age (hours)") { X = 1, Y = 5, ColorScheme = SchemePurple });
-        _ageField         = new TextField("24")                  { X = 1, Y = 6, Width = Dim.Fill(2) };
-        _includeRecentBox = new CheckBox("Include recent files") { X = 1, Y = 7, ColorScheme = SchemeWhite };
+        _btnScan.Clicked  += () => { if (_isRunning) _cancelRequested = true; else LaunchCleaners(previewOnly: true); };
+        _btnClean.Clicked += () => { if (_isRunning) _cancelRequested = true; else LaunchCleaners(previewOnly: false); };
 
-        controlsFrame.Add(new Label("· · · · · · · · · · · ·") { X = 1, Y = 9, ColorScheme = SchemeDim });
-        var btnRecommended = new Button("Recommended")    { X = 1, Y = 10, ColorScheme = SchemeWhite };
-        var btnAll         = new Button("All for this OS") { X = 1, Y = 12, ColorScheme = SchemeWhite };
-        var btnClear       = new Button("Clear")            { X = 1, Y = 14, ColorScheme = SchemeWhite };
+        controlsFrame.Add(new Label("· · · · · · · · · · · ·") { X = 1, Y = 4,  ColorScheme = SchemeDim });
+        controlsFrame.Add(new Label("Age (hours)")              { X = 1, Y = 5,  ColorScheme = SchemePrimary });
 
-        btnScan.Clicked        += () => LaunchCleaners(previewOnly: true);
-        btnClean.Clicked       += () => LaunchCleaners(previewOnly: false);
-        btnRecommended.Clicked += SelectRecommended;
-        btnAll.Clicked         += SelectAll;
-        btnClear.Clicked       += ClearSelection;
+        string ageStr = _settings.AgeHours.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        _ageField         = new TextField(ageStr)               { X = 1, Y = 6,  Width = Dim.Fill(2) };
+        _includeRecentBox = new CheckBox("Include recent files") { X = 1, Y = 7,  Checked = _settings.IncludeRecent, ColorScheme = SchemeContent };
 
-        controlsFrame.Add(btnScan, btnClean, _ageField, _includeRecentBox,
+        controlsFrame.Add(new Label("· · · · · · · · · · · ·") { X = 1, Y = 9,  ColorScheme = SchemeDim });
+        var btnRecommended = new Button("Recommended")     { X = 1, Y = 10, ColorScheme = SchemeContent };
+        var btnAll         = new Button("All for this OS") { X = 1, Y = 12, ColorScheme = SchemeContent };
+        var btnClear       = new Button("Clear")           { X = 1, Y = 14, ColorScheme = SchemeContent };
+
+        btnRecommended.Clicked += () => { SelectRecommended(); SaveSettings(); };
+        btnAll.Clicked         += () => { SelectAll();         SaveSettings(); };
+        btnClear.Clicked       += () => { ClearSelection();    SaveSettings(); };
+
+        controlsFrame.Add(_btnScan, _btnClean, _ageField, _includeRecentBox,
             btnRecommended, btnAll, btnClear);
         win.Add(controlsFrame);
 
-        // ── Output panel ───────────────────────────────────────────────────────
+        // ── Output panel ──────────────────────────────────────────────────────
+        // FIX: output frame starts at Pos.Bottom(cleanersFrame) — no overlapping label here
         var outputFrame = new FrameView("  Output  ")
         {
             X = 0,
             Y = Pos.Bottom(cleanersFrame),
             Width  = Dim.Fill(),
             Height = Dim.Fill(),
-            ColorScheme = SchemePurple
+            ColorScheme = SchemePrimary
         };
 
         _outputView = new TextView
@@ -184,35 +372,196 @@ internal sealed class TuiApp
         outputFrame.Add(_outputView);
         win.Add(outputFrame);
 
-        SetOutput("Ready. Select cleaners and press Scan or Run clean.");
+        // FIX: admin note goes into initial output text — not a floating label that overlaps
+        var initLines = new StringBuilder();
+        initLines.AppendLine(_initialPreview
+            ? "Preview mode active. Select cleaners and press Scan or Run clean."
+            : "Ready. Select cleaners and press Scan or Run clean.");
+        if (!_isAdmin && _cleaners.Any(c => c.RequiresAdministrator && SystemInfo.IsSupported(c.Platform)))
+        {
+            initLines.AppendLine();
+            initLines.AppendLine("○ Not running as administrator.");
+            initLines.Append("  Admin cleaners are disabled — use File › Restart as Administrator.");
+        }
+        SetOutput(initLines.ToString());
+
         top.Add(win);
 
-        // Status bar ───────────────────────────────────────────────────────────
-        top.Add(new StatusBar(new StatusItem[]
+        // ── Status bar ────────────────────────────────────────────────────────
+        string adminBadge = _isAdmin ? "● admin" : "○ user";
+        _freedItem = new StatusItem(Key.Null, "Freed: —", null);
+        _statusBar = new StatusBar(new StatusItem[]
         {
-            new(Key.Q | Key.CtrlMask, "~Ctrl+Q~ Quit",     () => Application.RequestStop()),
-            new(Key.Null, $"{_cleaners.Count} cleaners   ·   {SystemInfo.MachineName}", null)
+            new(Key.Q | Key.CtrlMask, "~Ctrl+Q~ Quit", () => Application.RequestStop()),
+            new(Key.Null, $"{_cleaners.Count} cleaners   ·   {SystemInfo.MachineName}   ·   {adminBadge}", null),
+            _freedItem
         })
-        { ColorScheme = SchemePurple });
+        { ColorScheme = SchemePrimary };
+        top.Add(_statusBar);
+    }
+
+    // ── Starfield ──────────────────────────────────────────────────────────────
+    private void InitStarfield(int width)
+    {
+        _fastRow = new char[Math.Max(width, 40)];
+        _slowRow = new char[Math.Max(width, 40)];
+        for (int i = 0; i < _fastRow.Length; i++)
+        {
+            _fastRow[i] = ' ';
+            _slowRow[i] = DimPool[_rng.Next(DimPool.Length)];
+        }
+        for (int i = 0; i < _fastRow.Length / 10; i++)
+            _fastRow[_rng.Next(_fastRow.Length)] = BrightPool[_rng.Next(BrightPool.Length)];
+    }
+
+    private bool StarfieldTick(MainLoop _)
+    {
+        char first = _fastRow[0];
+        Array.Copy(_fastRow, 1, _fastRow, 0, _fastRow.Length - 1);
+        _fastRow[^1] = first;
+        for (int i = 0; i < _fastRow.Length; i++)
+        {
+            int r = _rng.Next(300);
+            if (r < 1)      _fastRow[i] = BrightPool[_rng.Next(BrightPool.Length)];
+            else if (r < 3) _fastRow[i] = ' ';
+        }
+
+        _slowTick++;
+        if (_slowTick >= 3)
+        {
+            _slowTick = 0;
+            char last = _slowRow[^1];
+            Array.Copy(_slowRow, 0, _slowRow, 1, _slowRow.Length - 1);
+            _slowRow[0] = last;
+            for (int i = 0; i < _slowRow.Length; i++)
+                if (_rng.Next(500) < 1)
+                    _slowRow[i] = DimPool[_rng.Next(DimPool.Length)];
+        }
+
+        var merged = new char[_fastRow.Length];
+        for (int i = 0; i < merged.Length; i++)
+            merged[i] = _fastRow[i] != ' ' ? _fastRow[i] : _slowRow[i];
+
+        _animSlow.Text = new string(_slowRow);
+        _animFast.Text = new string(merged);
+        return true;
+    }
+
+    // ── Output helpers ─────────────────────────────────────────────────────────
+    private void SetOutput(string text)
+    {
+        _outputBuf.Clear();
+        _outputBuf.Append(text);
+        _outputView.Text = text;
+    }
+
+    private void AppendOutput(string text)
+    {
+        _outputBuf.Append(text);
+        _outputView.Text = _outputBuf.ToString();
+        // FIX: scroll to bottom so latest output is always visible
+        _outputView.MoveEnd();
+    }
+
+    private void UpdateFreed(long bytes)
+    {
+        _freedItem.Title = bytes == 0 ? "Freed: —" : $"Freed: {SystemInfo.FormatBytes(bytes)}";
+        _statusBar.SetNeedsDisplay();
+    }
+
+    // ── Language / Admin / Schedule ────────────────────────────────────────────
+    private void ToggleLanguage()
+    {
+        _language = _language == AppLanguage.English ? AppLanguage.Czech : AppLanguage.English;
+        Localizer.SetLanguage(_language);
+        _settings.SetLanguage(_language);
+        _settings.Save();
+        string name = _language == AppLanguage.Czech ? "Czech" : "English";
+        SetOutput($"[Language] Switched to {name}.\nCleaner output will use the new language. Restart to update UI labels.");
+    }
+
+    private static void RestartAsAdmin()
+    {
+        if (AdminHelper.IsRunningAsAdministrator())
+        {
+            MessageBox.Query("Admin", "Already running as administrator.", "OK");
+            return;
+        }
+        string[] forwarded = Environment.GetCommandLineArgs().Skip(1).ToArray();
+        if (AdminHelper.TryRestartAsAdministrator(forwarded, out string error))
+            Application.RequestStop();
+        else
+            MessageBox.ErrorQuery("Error", $"Could not restart as administrator:\n{error}", "OK");
+    }
+
+    private static void ShowScheduleDialog()
+    {
+        // FIX: detect dotnet host — can't register schtasks with a dotnet run path
+        string? processPath = Environment.ProcessPath;
+        bool isDirectExe = !string.IsNullOrEmpty(processPath)
+            && processPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
+            && !Path.GetFileNameWithoutExtension(processPath)
+                    .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
+
+        if (!isDirectExe)
+        {
+            MessageBox.Query("Schedule",
+                "Scheduled tasks require running the compiled .exe directly.\n" +
+                "Build Release and launch PCCleaner.Desktop.exe.",
+                "OK");
+            return;
+        }
+
+        bool   exists     = ScheduledTaskManager.Exists();
+        string statusText = exists ? "Status: Scheduled (weekly, Sunday 09:00)" : "Status: Not scheduled";
+
+        var dialog = new Dialog("Auto-Clean Schedule", 62, 11);
+        dialog.Add(new Label($"Task:   {ScheduledTaskManager.TaskName}") { X = 2, Y = 1, ColorScheme = SchemeContent });
+        dialog.Add(new Label(statusText)                                  { X = 2, Y = 2, ColorScheme = exists ? SchemePrimary : SchemeDim });
+        dialog.Add(new Label("Runs recommended cleaners silently via --auto-clean.") { X = 2, Y = 4, ColorScheme = SchemeDim });
+
+        var btnCreate = new Button("Create weekly task") { ColorScheme = SchemeAccent };
+        var btnRemove = new Button("Remove task")        { ColorScheme = SchemeDim };
+        var btnClose  = new Button("Close");
+
+        btnCreate.Clicked += () =>
+        {
+            if (ScheduledTaskManager.Create(processPath!, out string err))
+                MessageBox.Query("Scheduled", "Task created.\nRuns every Sunday at 09:00.", "OK");
+            else
+                MessageBox.ErrorQuery("Error", $"Could not create task:\n{err}", "OK");
+            Application.RequestStop();
+        };
+
+        btnRemove.Clicked += () =>
+        {
+            if (!exists) { MessageBox.Query("Schedule", "No task to remove.", "OK"); return; }
+            if (ScheduledTaskManager.Remove(out string err))
+                MessageBox.Query("Schedule", "Task removed.", "OK");
+            else
+                MessageBox.ErrorQuery("Error", $"Could not remove task:\n{err}", "OK");
+            Application.RequestStop();
+        };
+
+        btnClose.Clicked += () => Application.RequestStop();
+        dialog.AddButton(btnCreate);
+        dialog.AddButton(btnRemove);
+        dialog.AddButton(btnClose);
+        Application.Run(dialog);
     }
 
     // ── Selection helpers ──────────────────────────────────────────────────────
     private void SelectRecommended()
     {
         for (int i = 0; i < _cleaners.Count; i++)
-        {
             if (_checkBoxes[i].Enabled)
                 _checkBoxes[i].Checked = _cleaners[i].IsRecommended;
-        }
     }
 
     private void SelectAll()
     {
         foreach (CheckBox cb in _checkBoxes)
-        {
-            if (cb.Enabled)
-                cb.Checked = true;
-        }
+            if (cb.Enabled) cb.Checked = true;
     }
 
     private void ClearSelection()
@@ -221,118 +570,151 @@ internal sealed class TuiApp
             cb.Checked = false;
     }
 
+    private void SaveSettings()
+    {
+        if (TryParseAge(out double h)) _settings.AgeHours = h;
+        _settings.IncludeRecent   = _includeRecentBox?.Checked ?? _settings.IncludeRecent;
+        _settings.CheckedCleaners = _cleaners
+            .Zip(_checkBoxes, (c, cb) => (c, cb))
+            .Where(t => t.cb.Checked)
+            .Select(t => t.c.GetType().Name)
+            .ToList();
+        _settings.Save();
+    }
+
     // ── Cleaning logic ─────────────────────────────────────────────────────────
     private void LaunchCleaners(bool previewOnly)
     {
+        // FIX: if already running, treat button press as cancel
+        if (_isRunning)
+        {
+            _cancelRequested = true;
+            return;
+        }
+
         List<ICleaner> selected = GetSelectedCleaners();
+        if (selected.Count == 0) { SetOutput("No supported cleaners selected."); return; }
+        if (!TryParseAge(out double ageHours)) { SetOutput("Age filter must be a non-negative number."); return; }
+        if (!previewOnly && !ConfirmClean()) { SetOutput("Clean cancelled."); return; }
 
-        if (selected.Count == 0)
-        {
-            SetOutput("No supported cleaners selected.");
-            return;
-        }
+        SaveSettings();
+        UpdateFreed(0);
 
-        if (!TryParseAge(out double ageHours))
-        {
-            SetOutput("Age filter must be a non-negative number (e.g. 24).");
-            return;
-        }
+        _isRunning       = true;
+        _cancelRequested = false;
+        _btnScan.Text    = "⊠ Cancel";
+        _btnClean.Text   = "⊠ Cancel";
 
-        if (!previewOnly && !ConfirmClean())
-        {
-            SetOutput("Clean cancelled.");
-            return;
-        }
+        SetOutput(previewOnly ? "Scanning...\n\n" : "Cleaning...\n\n");
 
-        CleanOptions options = new(previewOnly, TimeSpan.FromHours(ageHours), _includeRecentBox.Checked);
-        SetOutput(previewOnly ? "Scanning..." : "Cleaning...");
+        var options = new CleanOptions(previewOnly, TimeSpan.FromHours(ageHours), _includeRecentBox.Checked);
 
         ThreadPool.QueueUserWorkItem(_ =>
         {
-            string output = RunCleaners(selected, options);
-            Application.MainLoop.Invoke(() => SetOutput(output));
+            void   Append(string text) => Application.MainLoop.Invoke(() => AppendOutput(text));
+            void   OnFreed(long b)     => Application.MainLoop.Invoke(() => UpdateFreed(b));
+            bool   IsCancelled()       => _cancelRequested;
+
+            ExecuteClean(selected, options, Append, OnFreed, IsCancelled);
+
+            // Restore UI on main thread
+            Application.MainLoop.Invoke(() =>
+            {
+                _isRunning     = false;
+                _btnScan.Text  = "Scan (preview)";
+                _btnClean.Text = "Run clean";
+            });
         });
     }
 
     private List<ICleaner> GetSelectedCleaners()
     {
-        List<ICleaner> result = new();
+        var result = new List<ICleaner>();
         for (int i = 0; i < _cleaners.Count; i++)
-        {
             if (_checkBoxes[i].Checked && _checkBoxes[i].Enabled)
                 result.Add(_cleaners[i]);
-        }
         return result;
     }
 
-    private bool TryParseAge(out double ageHours)
-    {
-        return double.TryParse(
-            _ageField.Text.ToString(),
+    private bool TryParseAge(out double ageHours) =>
+        double.TryParse(
+            _ageField?.Text.ToString() ?? "24",
             System.Globalization.NumberStyles.Float,
             System.Globalization.CultureInfo.InvariantCulture,
             out ageHours) && ageHours >= 0;
-    }
 
     private static bool ConfirmClean()
     {
-        bool confirmed = false;
+        string confirmWord = Localizer.T("prompt.typeCleanWord"); // "CLEAN" or "CISTIT"
+        bool   confirmed   = false;
+
         var dialog = new Dialog("Confirm deletion", 60, 9);
-        var label  = new Label("Type CLEAN to confirm deleting files:") { X = 1, Y = 1 };
-        var input  = new TextField("") { X = 1, Y = 3, Width = Dim.Fill(2) };
+        dialog.Add(new Label($"Type {confirmWord} to confirm deleting files:") { X = 1, Y = 1 });
+        var input = new TextField("") { X = 1, Y = 3, Width = Dim.Fill(2) };
+        dialog.Add(input);
 
         var ok = new Button("OK", is_default: true);
         ok.Clicked += () =>
         {
-            confirmed = string.Equals(input.Text.ToString(), "CLEAN", StringComparison.OrdinalIgnoreCase);
+            confirmed = string.Equals(input.Text.ToString(), confirmWord, StringComparison.OrdinalIgnoreCase);
             Application.RequestStop();
         };
-
         var cancel = new Button("Cancel");
         cancel.Clicked += () => Application.RequestStop();
 
-        dialog.Add(label, input);
         dialog.AddButton(cancel);
         dialog.AddButton(ok);
         Application.Run(dialog);
         return confirmed;
     }
 
-    private static string RunCleaners(IReadOnlyList<ICleaner> cleaners, CleanOptions options)
+    private static void ExecuteClean(
+        IReadOnlyList<ICleaner> cleaners,
+        CleanOptions            options,
+        Action<string>          append,
+        Action<long>            onFreed,
+        Func<bool>              isCancelled)
     {
-        var sb = new StringBuilder();
-        sb.AppendLine(options.PreviewOnly
-            ? "Scan mode — no files will be deleted."
-            : "Clean mode — files can be deleted.");
-        sb.AppendLine();
+        append(options.PreviewOnly ? "Scan mode — no files will be deleted.\n" : "Clean mode — files will be deleted.\n");
+        append("\n");
+
+        long totalFreed = 0;
 
         var callbacks = new CleanerRunCallbacks
         {
-            Warning   = w        => sb.AppendLine($"Warning: {w}"),
-            Starting  = c        => sb.AppendLine($"Running {c.Name}..."),
+            Warning   = w        => append($"  ⚠  {w}\n"),
+            Starting  = c        => append($"→ {c.Name}...\n"),
             Completed = r        =>
             {
-                sb.AppendLine(r.ToConsoleMessage());
+                append($"  {r.ToConsoleMessage()}\n");
                 foreach (string note in r.Notes)
-                    sb.AppendLine($"  {note}");
+                    append($"     {note}\n");
+                if (r.BytesFreed > 0)
+                {
+                    totalFreed += r.BytesFreed;
+                    onFreed(totalFreed);
+                }
             },
-            Skipped   = (c, why) => sb.AppendLine($"{c.Name}: skipped — {why}")
+            Skipped        = (c, why) => append($"  {c.Name}: skipped ({why})\n"),
+            // FIX: check cancel flag before each cleaner; CleanerRunner calls this between cleaners
+            ConfirmCleaner = _ =>
+            {
+                if (!isCancelled()) return true;
+                append("\n⊠ Cancelled by user.\n");
+                return false;
+            }
         };
 
         var report = new CleanerRunner().Run(cleaners, options, callbacks);
-        sb.AppendLine();
-        sb.AppendLine(report.Total.ToConsoleMessage());
+        append("\n");
+        append($"━━━ {report.Total.ToConsoleMessage()} ━━━\n");
 
-        if (CleanReportWriter.TrySave(report, options, out string path, out string error))
-            sb.AppendLine($"Report saved: {path}");
-        else
-            sb.AppendLine($"Could not save report: {error}");
-
-        return sb.ToString();
-    }
-
-    private void SetOutput(string text)
-    {
-        _outputView.Text = text;
+        if (!isCancelled())
+        {
+            if (CleanReportWriter.TrySave(report, options, out string path, out string saveError))
+                append($"Report saved → {path}\n");
+            else if (!string.IsNullOrEmpty(saveError))
+                append($"Report error: {saveError}\n");
+        }
     }
 }

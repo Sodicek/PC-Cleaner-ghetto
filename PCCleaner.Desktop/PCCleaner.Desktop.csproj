@@ -14,10 +14,5 @@
     <ProjectReference Include="..\PCCleaner.Core\PCCleaner.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Include="App.axaml" />
-    <None Include="MainWindow.axaml" />
-    <Compile Remove="App.axaml.cs" />
-    <Compile Remove="MainWindow.axaml.cs" />
-  </ItemGroup>
+
 </Project>
