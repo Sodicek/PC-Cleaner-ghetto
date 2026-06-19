@@ -44,7 +44,11 @@ internal static class CleanerCatalog
             new StartupCleaner(),
             new ComponentStoreCleanupCleaner(),
             new DuplicateFileCleaner(),
-            new ScheduledTaskCleaner()
+            new ScheduledTaskCleaner(),
+            new SteamCacheCleaner(),
+            new DeveloperCacheCleaner(),
+            new FlatpakCleaner(),
+            new VsCodeWorkspaceCleaner()
         };
     }
 }

@@ -151,7 +151,19 @@ internal static class Localizer
         ["cleaner.duplicates.risk"] = "Personal files can be deleted if they are exact duplicates; preview first.",
         ["cleaner.scheduledTask.name"] = "Scheduled auto-clean task",
         ["cleaner.scheduledTask.description"] = "Removes the PC Cleaner Auto-Clean scheduled task from Windows Task Scheduler.",
-        ["cleaner.scheduledTask.risk"] = "Only the PC Cleaner scheduled task is removed; no other scheduled tasks are affected."
+        ["cleaner.scheduledTask.risk"] = "Only the PC Cleaner scheduled task is removed; no other scheduled tasks are affected.",
+        ["cleaner.steamCache.name"] = "Steam shader & download cache",
+        ["cleaner.steamCache.description"] = "Deletes Steam shader cache, incomplete downloads, and temp files for native and Flatpak Steam.",
+        ["cleaner.steamCache.risk"] = "Shader cache is rebuilt on first game launch (expect stuttering); partially downloaded games must re-download missing pieces.",
+        ["cleaner.devCache.name"] = "Developer tool caches",
+        ["cleaner.devCache.description"] = "Clears npm, pip, yarn, cargo registry, and Gradle module download caches.",
+        ["cleaner.devCache.risk"] = "Next build or install will re-download packages from the internet; no source code or installed packages are touched.",
+        ["cleaner.flatpak.name"] = "Flatpak unused runtimes",
+        ["cleaner.flatpak.description"] = "Removes Flatpak runtimes and extensions that are no longer required by any installed app.",
+        ["cleaner.flatpak.risk"] = "Runtimes are re-downloaded if a matching app is installed later; no app data is touched.",
+        ["cleaner.vscode.name"] = "VS Code orphaned workspace storage",
+        ["cleaner.vscode.description"] = "Deletes workspaceStorage entries whose project folder no longer exists on disk.",
+        ["cleaner.vscode.risk"] = "VS Code extension state for deleted projects is removed; active projects are not touched."
     };
 
     private static readonly Dictionary<string, string> Czech = new()
@@ -295,7 +307,19 @@ internal static class Localizer
         ["cleaner.duplicates.risk"] = "Osobni soubory mohou byt smazane, pokud jsou presne duplicity; nejdriv pouzij nahled.",
         ["cleaner.scheduledTask.name"] = "Naplanovana automaticka cistka",
         ["cleaner.scheduledTask.description"] = "Odstrani naplanovany ukol PC Cleaner Auto-Clean z Planovace uloh Windows.",
-        ["cleaner.scheduledTask.risk"] = "Odebere se pouze ukol PC Cleaner; ostatni naplanovane ukoly nejsou dotceny."
+        ["cleaner.scheduledTask.risk"] = "Odebere se pouze ukol PC Cleaner; ostatni naplanovane ukoly nejsou dotceny.",
+        ["cleaner.steamCache.name"] = "Steam shader a stahovaci cache",
+        ["cleaner.steamCache.description"] = "Maze shader cache, neuplne stazene soubory a docasne soubory Steamu (nativni i Flatpak).",
+        ["cleaner.steamCache.risk"] = "Shader cache se pri prvnim spusteni hry znovu postavi (ocekavej zasekavani); castecne stazene hry si musi restahovat chybejici casti.",
+        ["cleaner.devCache.name"] = "Cache vyvojarskych nastroju",
+        ["cleaner.devCache.description"] = "Cisti npm, pip, yarn, cargo registry a Gradle cache stazených modulu.",
+        ["cleaner.devCache.risk"] = "Pri pristim buildu nebo instalaci se balicky restahnou z internetu; zdrojove kody ani nainstalovane balicky se netykaji.",
+        ["cleaner.flatpak.name"] = "Nepouzivane Flatpak runtime",
+        ["cleaner.flatpak.description"] = "Odstrani Flatpak runtime a rozsireni, ktera uz zadna nainstalovana aplikace nepotrebuje.",
+        ["cleaner.flatpak.risk"] = "Runtime se restahne, pokud ji bude pozdeji potrebovat nejaka aplikace; data aplikaci se netykaji.",
+        ["cleaner.vscode.name"] = "VS Code osirely workspaceStorage",
+        ["cleaner.vscode.description"] = "Maze zaznamy workspaceStorage, jejichz slozka projektu uz na disku neexistuje.",
+        ["cleaner.vscode.risk"] = "Odebere se stav rozsireni VS Code pro smazane projekty; aktivni projekty nejsou dotceny."
     };
 
     private static readonly AsyncLocal<AppLanguage?> LanguageOverride = new();
