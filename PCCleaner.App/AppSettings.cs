@@ -1,7 +1,7 @@
 using System.Text.Json;
 using PCCleaner.Utilities;
 
-namespace PCCleaner.Desktop;
+namespace PCCleaner.App;
 
 internal sealed class AppSettings
 {

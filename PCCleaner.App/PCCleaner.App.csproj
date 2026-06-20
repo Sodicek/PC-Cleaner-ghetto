@@ -14,5 +14,10 @@
     <ProjectReference Include="..\PCCleaner.Core\PCCleaner.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\CHANGELOG.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>

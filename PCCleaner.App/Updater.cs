@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Net.Http.Headers;
 
-namespace PCCleaner.Desktop;
+namespace PCCleaner.App;
 
 internal static class Updater
 {
@@ -14,13 +14,16 @@ internal static class Updater
         if (update.DownloadUrl is null)
             return (false, $"No binary found for this platform.\nVisit: {update.ReleasePageUrl}");
 
+        if (update.AssetName is null || !IsValidAssetName(update.AssetName))
+            return (false, "Update aborted: asset name contains unsafe characters.");
+
         string? exePath = Environment.ProcessPath;
         bool isDotnetHost = string.IsNullOrEmpty(exePath) ||
             Path.GetFileNameWithoutExtension(exePath)
                 .Equals("dotnet", StringComparison.OrdinalIgnoreCase);
 
         if (isDotnetHost)
-            return (false, "Auto-update only works with the compiled binary.\nBuild Release and run PCCleaner.Desktop directly.");
+            return (false, "Auto-update only works with the compiled binary.\nBuild Release and run PCCleaner.App directly.");
 
         string exeDir  = Path.GetDirectoryName(exePath)!;
         string tmpPath = Path.Combine(exeDir, update.AssetName + ".download");
@@ -74,6 +77,10 @@ internal static class Updater
 
     // ── Platform-specific apply ────────────────────────────────────────────────
 
+    internal static bool IsValidAssetName(string name) =>
+        !string.IsNullOrEmpty(name) &&
+        name.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.');
+
     private static void ApplyWindows(string exePath, string tmpPath, string exeDir, string assetName)
     {
         // Can't replace a running .exe on Windows — use a helper batch script
@@ -82,11 +89,13 @@ internal static class Updater
 
         File.Move(tmpPath, staged, overwrite: true);
 
+        // Escape percent signs so cmd.exe does not expand env-var references (e.g. %WINDIR%)
+        string batchSafe(string p) => p.Replace("%", "%%");
         File.WriteAllText(scriptPath,
             "@echo off\r\n" +
             "timeout /t 2 /nobreak >nul\r\n" +
-           $"move /y \"{staged}\" \"{exePath}\"\r\n" +
-           $"start \"\" \"{exePath}\"\r\n" +
+           $"move /y \"{batchSafe(staged)}\" \"{batchSafe(exePath)}\"\r\n" +
+           $"start \"\" \"{batchSafe(exePath)}\"\r\n" +
             "del \"%~f0\"\r\n");
 
         Process.Start(new ProcessStartInfo

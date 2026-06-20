@@ -3,7 +3,7 @@ using PCCleaner.Core;
 using PCCleaner.Utilities;
 using Xunit;
 
-namespace PCCleanerTests;
+namespace PCCleaner.Tests;
 
 // ── Localizer — all new cleaner keys must exist in both languages ──────────────
 
@@ -262,6 +262,131 @@ public class PrefetchCleanerTests
     }
 }
 
+// ── UnixTrashCleaner — registration and platform ──────────────────────────────
+
+public class UnixTrashCleanerTests
+{
+    [Fact]
+    public void UnixTrashKeys_ExistInEnglish()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        Assert.NotEqual("cleaner.unixTrash.name",        Localizer.T("cleaner.unixTrash.name"));
+        Assert.NotEqual("cleaner.unixTrash.description",  Localizer.T("cleaner.unixTrash.description"));
+        Assert.NotEqual("cleaner.unixTrash.risk",         Localizer.T("cleaner.unixTrash.risk"));
+    }
+
+    [Fact]
+    public void UnixTrashKeys_ExistInCzech()
+    {
+        AppLanguage original = Localizer.CurrentLanguage;
+        try
+        {
+            Localizer.SetLanguage(AppLanguage.Czech);
+            Assert.NotEqual("cleaner.unixTrash.name",        Localizer.T("cleaner.unixTrash.name"));
+            Assert.NotEqual("cleaner.unixTrash.description",  Localizer.T("cleaner.unixTrash.description"));
+            Assert.NotEqual("cleaner.unixTrash.risk",         Localizer.T("cleaner.unixTrash.risk"));
+        }
+        finally { Localizer.SetLanguage(original); }
+    }
+
+    [Fact]
+    public void UnixTrashCleaner_PresentOnLinux()
+    {
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(false, true, false);
+        Assert.Contains(cleaners, c => c is UnixTrashCleaner);
+    }
+
+    [Fact]
+    public void UnixTrashCleaner_PresentOnMacOS()
+    {
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(false, false, true);
+        Assert.Contains(cleaners, c => c is UnixTrashCleaner);
+    }
+
+    [Fact]
+    public void UnixTrashCleaner_AbsentOnWindows()
+    {
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(true, false, false);
+        Assert.DoesNotContain(cleaners, c => c is UnixTrashCleaner);
+    }
+
+    [Fact]
+    public void UnixTrashCleaner_IsRecommendedAndDoesNotRequireAdmin()
+    {
+        var cleaner = new UnixTrashCleaner();
+        Assert.True(cleaner.IsRecommended);
+        Assert.False(cleaner.RequiresAdministrator);
+    }
+
+    [Fact]
+    public void UnixTrashCleaner_Clean_EmptyHome_ReturnsEmptyResult()
+    {
+        // Smoke test: Clean() on current platform must not throw
+        var cleaner = new UnixTrashCleaner();
+        var options = new CleanOptions(previewOnly: true, TimeSpan.FromHours(24), includeRecentFiles: false);
+        var result  = cleaner.Clean(options);
+        Assert.NotNull(result);
+        Assert.Equal(0, result.Failures);
+    }
+}
+
+// ── LinuxRecentFilesCleaner — registration and keys ───────────────────────────
+
+public class LinuxRecentFilesCleanerTests
+{
+    [Fact]
+    public void LinuxRecentFilesKeys_ExistInEnglish()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        Assert.NotEqual("cleaner.linuxRecentFiles.name",        Localizer.T("cleaner.linuxRecentFiles.name"));
+        Assert.NotEqual("cleaner.linuxRecentFiles.description",  Localizer.T("cleaner.linuxRecentFiles.description"));
+        Assert.NotEqual("cleaner.linuxRecentFiles.risk",         Localizer.T("cleaner.linuxRecentFiles.risk"));
+    }
+
+    [Fact]
+    public void LinuxRecentFilesKeys_ExistInCzech()
+    {
+        AppLanguage original = Localizer.CurrentLanguage;
+        try
+        {
+            Localizer.SetLanguage(AppLanguage.Czech);
+            Assert.NotEqual("cleaner.linuxRecentFiles.name",        Localizer.T("cleaner.linuxRecentFiles.name"));
+            Assert.NotEqual("cleaner.linuxRecentFiles.description",  Localizer.T("cleaner.linuxRecentFiles.description"));
+            Assert.NotEqual("cleaner.linuxRecentFiles.risk",         Localizer.T("cleaner.linuxRecentFiles.risk"));
+        }
+        finally { Localizer.SetLanguage(original); }
+    }
+
+    [Fact]
+    public void LinuxRecentFilesCleaner_PresentOnLinux()
+    {
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(false, true, false);
+        Assert.Contains(cleaners, c => c is LinuxRecentFilesCleaner);
+    }
+
+    [Fact]
+    public void LinuxRecentFilesCleaner_AbsentOnWindows()
+    {
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(true, false, false);
+        Assert.DoesNotContain(cleaners, c => c is LinuxRecentFilesCleaner);
+    }
+
+    [Fact]
+    public void LinuxRecentFilesCleaner_AbsentOnMacOS()
+    {
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(false, false, true);
+        Assert.DoesNotContain(cleaners, c => c is LinuxRecentFilesCleaner);
+    }
+
+    [Fact]
+    public void LinuxRecentFilesCleaner_IsNotRecommendedAndNoAdmin()
+    {
+        var cleaner = new LinuxRecentFilesCleaner();
+        Assert.False(cleaner.IsRecommended); // opt-in — clears visible user history
+        Assert.False(cleaner.RequiresAdministrator);
+    }
+}
+
 // ── ScheduledTaskManager — security validation ────────────────────────────────
 
 public class ScheduledTaskManagerTests
@@ -313,4 +438,122 @@ public class SystemdTimerManagerTests
         // The only thing we assert here is that the error is NOT the newline message
         Assert.DoesNotContain("newline", error, StringComparison.OrdinalIgnoreCase);
     }
+}
+
+// ── All cleaners — Name / Description / Risk must be non-empty ────────────────
+// Regression guard for the info panel added in v1.0.2: focusing a cleaner
+// shows these three strings; any empty value would silently show nothing.
+
+public class CleanerMetadataTests
+{
+    [Theory]
+    [InlineData(true,  false, false)]
+    [InlineData(false, true,  false)]
+    [InlineData(false, false, true)]
+    public void AllCleaners_HaveNonEmptyNameDescriptionRisk(bool win, bool lin, bool mac)
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        var cleaners = CleanerCatalog.CreateCleanersForPlatform(win, lin, mac);
+        foreach (ICleaner c in cleaners)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(c.Name),        $"{c.GetType().Name}.Name is empty");
+            Assert.False(string.IsNullOrWhiteSpace(c.Description), $"{c.GetType().Name}.Description is empty");
+            Assert.False(string.IsNullOrWhiteSpace(c.Risk),        $"{c.GetType().Name}.Risk is empty");
+        }
+    }
+}
+
+// ── Admin warning filter — platform correctness ───────────────────────────────
+// Change in v1.0.2: admin dialog filters by IsSupported(c.Platform) so Linux
+// and macOS users are never shown Windows-only admin cleaners.
+
+public class AdminCleanerPlatformFilterTests
+{
+    private static List<ICleaner> GetAdminCleaners(bool win, bool lin, bool mac)
+    {
+        var all = CleanerCatalog.CreateCleanersForPlatform(win, lin, mac);
+        return all.Where(c => c.RequiresAdministrator && SystemInfo.IsSupported(c.Platform, win, lin, mac)).ToList();
+    }
+
+    [Fact]
+    public void AdminCleaners_OnLinux_IsEmpty()
+    {
+        var admins = GetAdminCleaners(false, true, false);
+        Assert.Empty(admins);
+    }
+
+    [Fact]
+    public void AdminCleaners_OnMacOS_IsEmpty()
+    {
+        var admins = GetAdminCleaners(false, false, true);
+        Assert.Empty(admins);
+    }
+
+    [Fact]
+    public void AdminCleaners_OnWindows_ContainsAtLeastTwo()
+    {
+        Localizer.SetLanguage(AppLanguage.English);
+        var admins = GetAdminCleaners(true, false, false);
+        Assert.True(admins.Count >= 2, $"Expected ≥2 Windows admin cleaners, found {admins.Count}");
+    }
+
+    [Fact]
+    public void AdminCleaners_OnWindows_AllHaveWindowsPlatform()
+    {
+        var admins = GetAdminCleaners(true, false, false);
+        Assert.All(admins, c => Assert.Equal(CleanerPlatform.Windows, c.Platform));
+    }
+}
+
+// ── Security — updater asset name validation ──────────────────────────────────
+// Updater.IsValidAssetName is in PCCleaner.App (Terminal.Gui dependency makes
+// it unreachable from this project). These tests mirror the same rule to document
+// the threat model and verify our expected asset names are safe.
+
+public class UpdaterAssetNameSecurityTests
+{
+    // The rule: only [a-z A-Z 0-9 - _ .] allowed — nothing that could inject
+    // into a cmd.exe batch script (", &, |, <, >, ;, %, space, …)
+    private static bool IsValidAssetName(string name) =>
+        !string.IsNullOrEmpty(name) &&
+        name.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.');
+
+    [Theory]
+    [InlineData("PCCleaner-win-x64.exe")]
+    [InlineData("PCCleaner-linux-x64")]
+    [InlineData("PCCleaner-osx-x64")]
+    public void KnownAssetNames_PassSafetyCheck(string assetName)
+    {
+        Assert.True(IsValidAssetName(assetName),
+            $"Asset name '{assetName}' would fail the safety check — update the allow-list rule");
+    }
+
+    [Theory]
+    [InlineData("evil.exe\" & calc.exe & echo \"")]  // cmd injection via quote
+    [InlineData("update.exe|rm -rf /")]               // pipe injection
+    [InlineData("file %.exe")]                        // percent + space
+    [InlineData("")]                                  // empty
+    [InlineData("a b.exe")]                           // space
+    public void MaliciousAssetNames_FailSafetyCheck(string assetName)
+    {
+        Assert.False(IsValidAssetName(assetName));
+    }
+}
+
+// ── Security — systemd unit file % specifier injection ────────────────────────
+
+public class SystemdTimerSecurityTests
+{
+    [Fact]
+    public void Create_PathWithPercent_PassesNewlineCheck()
+    {
+        // Paths with % are valid filesystem paths on Linux — they must NOT be
+        // rejected. Instead they are escaped (% → %%) in the unit file content.
+        // This test verifies the path gets past the guard and only fails (if at all)
+        // because systemctl is unavailable, not because of percent rejection.
+        string path = "/home/user%h/pccleaner";
+        SystemdTimerManager.Create(path, out string error);
+        Assert.DoesNotContain("newline", error, StringComparison.OrdinalIgnoreCase);
+    }
+
 }

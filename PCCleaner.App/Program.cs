@@ -1,5 +1,5 @@
 using PCCleaner.Core;
-using PCCleaner.Desktop;
+using PCCleaner.App;
 using PCCleaner.Utilities;
 
 var settings      = AppSettings.Load();

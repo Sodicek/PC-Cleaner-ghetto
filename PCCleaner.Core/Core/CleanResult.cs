@@ -5,6 +5,7 @@ using PCCleaner.Utilities;
 internal sealed class CleanResult
 {
     private readonly List<string> _notes = new();
+    private int _failureNoteCount;
 
     public CleanResult(string cleanerName, bool previewOnly = false)
     {
@@ -44,9 +45,26 @@ internal sealed class CleanResult
         DirectoriesDeleted++;
     }
 
-    public void AddFailure()
+    private const int MaxFailureNotes = 20;
+
+    public void AddFailure(string filePath = "", string reason = "")
     {
         Failures++;
+        if (!string.IsNullOrEmpty(filePath))
+        {
+            if (_failureNoteCount < MaxFailureNotes)
+            {
+                string name = Path.GetFileName(filePath);
+                if (string.IsNullOrEmpty(name)) name = filePath;
+                _notes.Add($"✗ {name}: {reason}");
+                _failureNoteCount++;
+            }
+            else if (_failureNoteCount == MaxFailureNotes)
+            {
+                _notes.Add("✗ … (more errors not shown — see total count above)");
+                _failureNoteCount++;
+            }
+        }
     }
 
     public void AddNote(string note)
@@ -64,6 +82,7 @@ internal sealed class CleanResult
         DirectoriesDeleted += other.DirectoriesDeleted;
         BytesFreed += other.BytesFreed;
         Failures += other.Failures;
+        _failureNoteCount += other._failureNoteCount;
         _notes.AddRange(other.Notes);
     }
 

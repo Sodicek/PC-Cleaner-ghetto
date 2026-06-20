@@ -1,13 +1,12 @@
-
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.3.32929.385
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCCleaner.Desktop", "PCCleaner.Desktop\PCCleaner.Desktop.csproj", "{B6E83093-41F2-4D86-9A1D-48B3CD649D8A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCCleaner.App", "PCCleaner.App\PCCleaner.App.csproj", "{B6E83093-41F2-4D86-9A1D-48B3CD649D8A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCCleaner.Core", "PCCleaner.Core\PCCleaner.Core.csproj", "{B993F5B0-8FBC-484F-957C-7EFA69B3630E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCCleanerTests", "PCCleanerTests\PCCleanerTests.csproj", "{9CDB5A00-71E7-4377-B2EC-113B5F464A69}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PCCleaner.Tests", "PCCleaner.Tests\PCCleaner.Tests.csproj", "{9CDB5A00-71E7-4377-B2EC-113B5F464A69}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

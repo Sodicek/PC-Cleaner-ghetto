@@ -103,12 +103,25 @@ internal static class FileDeleteHelper
             }
 
             file.Attributes = FileAttributes.Normal;
-            file.Delete();
+            try
+            {
+                file.Delete();
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                // Retry once — covers transient antivirus/indexer locks (IOException)
+                // and cases where clearing attributes didn't take effect immediately (UnauthorizedAccessException)
+                Thread.Sleep(500);
+                var retry = new FileInfo(filePath);
+                retry.Attributes = FileAttributes.Normal;
+                retry.Delete(); // if still fails, outer catch records it
+            }
+
             result.AddDeletedFile(size);
         }
-        catch
+        catch (Exception ex)
         {
-            result.AddFailure();
+            result.AddFailure(filePath, ex.Message);
         }
     }
 
@@ -125,9 +138,9 @@ internal static class FileDeleteHelper
             Directory.Delete(directoryPath, recursive: false);
             result.AddDeletedDirectory();
         }
-        catch
+        catch (Exception ex)
         {
-            result.AddFailure();
+            result.AddFailure(directoryPath, ex.Message);
         }
     }
 

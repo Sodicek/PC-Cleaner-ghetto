@@ -41,6 +41,8 @@ internal static class CleanerCatalog
             new ThumbnailCacheCleaner(),
             new RecentItemsCleaner(),
             new RecycleBinCleaner(),
+            new UnixTrashCleaner(),
+            new LinuxRecentFilesCleaner(),
             new StartupCleaner(),
             new ComponentStoreCleanupCleaner(),
             new DuplicateFileCleaner(),

@@ -2,7 +2,7 @@ using PCCleaner.Core;
 using PCCleaner.Utilities;
 using Xunit;
 
-namespace PCCleanerTests;
+namespace PCCleaner.Tests;
 
 public class CleanResultTests
 {
@@ -141,6 +141,90 @@ public class CleanResultTests
         string msg = result.ToConsoleMessage();
         Assert.Contains("2", msg);
         Assert.Contains("1", msg);
+    }
+
+    // --- v1.0.2: failure note cap ---
+
+    [Fact]
+    public void AddFailure_ExactlyAtCap_AllNotesAreFilenames()
+    {
+        var result = new CleanResult("test");
+        for (int i = 1; i <= 20; i++)
+            result.AddFailure($@"C:\temp\file{i}.tmp", "Access denied");
+
+        Assert.Equal(20, result.Failures);
+        Assert.Equal(20, result.Notes.Count);
+        Assert.DoesNotContain(result.Notes, n => n.Contains("and more"));
+    }
+
+    [Fact]
+    public void AddFailure_At21st_AddsOverflowLine()
+    {
+        var result = new CleanResult("test");
+        for (int i = 1; i <= 21; i++)
+            result.AddFailure($@"C:\temp\file{i}.tmp", "Access denied");
+
+        // 20 filename notes + 1 overflow note = 21 total
+        Assert.Equal(21, result.Failures);
+        Assert.Equal(21, result.Notes.Count);
+        Assert.Single(result.Notes, n => n.Contains("more errors"));
+    }
+
+    [Fact]
+    public void AddFailure_FarBeyondCap_OnlyOneOverflowLine()
+    {
+        var result = new CleanResult("test");
+        for (int i = 1; i <= 100; i++)
+            result.AddFailure($@"C:\temp\file{i}.tmp", "err");
+
+        Assert.Equal(100, result.Failures);
+        Assert.Equal(21, result.Notes.Count); // 20 filenames + 1 overflow
+        Assert.Equal(1, result.Notes.Count(n => n.Contains("more errors")));
+    }
+
+    [Fact]
+    public void AddFailure_NoArgsDoNotCountTowardCap()
+    {
+        var result = new CleanResult("test");
+        for (int i = 1; i <= 20; i++)
+            result.AddFailure($@"C:\temp\file{i}.tmp", "err");
+        result.AddFailure(); // no path — should not trigger "and more"
+
+        Assert.Equal(21, result.Failures);
+        Assert.Equal(20, result.Notes.Count);
+        Assert.DoesNotContain(result.Notes, n => n.Contains("and more"));
+    }
+
+    [Fact]
+    public void AddFailure_AndMoreLine_AppearsExactlyOnce()
+    {
+        var result = new CleanResult("test");
+        for (int i = 1; i <= 25; i++)
+            result.AddFailure($@"C:\temp\file{i}.tmp", "err");
+
+        Assert.Equal(1, result.Notes.Count(n => n.Contains("more errors")));
+    }
+
+    [Fact]
+    public void Merge_ExceedingCap_SubsequentAddFailureAddsNoMoreNotes()
+    {
+        // a fills to 15 notes, b fills to 10 notes → merged total 25 notes > cap(20)
+        var a = new CleanResult("a");
+        for (int i = 1; i <= 15; i++)
+            a.AddFailure($@"C:\a\file{i}.tmp", "err");
+
+        var b = new CleanResult("b");
+        for (int i = 1; i <= 10; i++)
+            b.AddFailure($@"C:\b\file{i}.tmp", "err");
+
+        a.Merge(b);
+        int notesBefore = a.Notes.Count; // 25
+
+        // Further failures on the merged result must not add notes (cap already exceeded)
+        a.AddFailure(@"C:\extra\extra.tmp", "err");
+
+        Assert.Equal(notesBefore, a.Notes.Count);
+        Assert.Equal(26, a.Failures);
     }
 }
 
@@ -335,6 +419,63 @@ public class CleanerRunnerTests
         Assert.Empty(report.Results);
         Assert.Single(report.SkippedCleaners);
         Assert.Single(skipped);
+    }
+
+    [Fact]
+    public void Run_StartingCallback_FiresForEachCleaner()
+    {
+        List<string> started = new();
+        var c1 = new TestCleaner(_ => { });
+        var c2 = new TestCleaner(_ => { });
+        CleanerRunCallbacks callbacks = new()
+        {
+            Starting = c => started.Add(c.Name)
+        };
+
+        new CleanerRunner().Run(new[] { c1, c2 }, new CleanOptions(true, TimeSpan.Zero, true), callbacks);
+
+        Assert.Equal(2, started.Count);
+    }
+
+    [Fact]
+    public void Run_CompletedCallback_ReceivesResultWithCorrectData()
+    {
+        CleanResult? received = null;
+        var cleaner = new TestCleaner(r => r.AddDeletedFile(4096));
+        CleanerRunCallbacks callbacks = new()
+        {
+            Completed = r => received = r
+        };
+
+        new CleanerRunner().Run(new[] { cleaner }, new CleanOptions(true, TimeSpan.Zero, true), callbacks);
+
+        Assert.NotNull(received);
+        Assert.Equal(4096, received!.BytesFreed);
+    }
+
+    [Fact]
+    public void Run_CancellationAfterFirstCleaner_SecondCleanerIsSkipped()
+    {
+        int runCount = 0;
+        var c1 = new TestCleaner(_ => runCount++);
+        var c2 = new TestCleaner(_ => runCount++);
+
+        bool firstConfirmed = false;
+        CleanerRunCallbacks callbacks = new()
+        {
+            ConfirmCleaner = _ =>
+            {
+                if (firstConfirmed) return false;
+                firstConfirmed = true;
+                return true;
+            }
+        };
+
+        var report = new CleanerRunner().Run(new[] { c1, c2 }, new CleanOptions(true, TimeSpan.Zero, true), callbacks);
+
+        Assert.Equal(1, runCount);
+        Assert.Single(report.Results);
+        Assert.Single(report.SkippedCleaners);
     }
 
     [Fact]

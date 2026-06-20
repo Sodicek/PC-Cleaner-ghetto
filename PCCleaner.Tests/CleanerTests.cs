@@ -3,7 +3,7 @@ using PCCleaner.Core;
 using PCCleaner.Utilities;
 using Xunit;
 
-namespace PCCleanerTests;
+namespace PCCleaner.Tests;
 
 public class DirectoryCleanerTests : IDisposable
 {
@@ -92,15 +92,15 @@ public class DirectoryCleanerTests : IDisposable
     {
         Localizer.SetLanguage(AppLanguage.English);
         var cleaner = new DirectoryCleaner(
-            "app.title",
-            "app.subtitle",
-            "status.done",
+            "cleaner.userTemp.name",
+            "cleaner.userTemp.description",
+            "cleaner.userTemp.risk",
             new[] { _dir },
             platform: CleanerPlatform.All,
             requiresAdministrator: false,
             isRecommended: true);
 
-        Assert.Equal("PC Cleaner", cleaner.Name);
+        Assert.Equal("User temporary files", cleaner.Name);
         Assert.Equal(CleanerPlatform.All, cleaner.Platform);
         Assert.False(cleaner.RequiresAdministrator);
         Assert.True(cleaner.IsRecommended);

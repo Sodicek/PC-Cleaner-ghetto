@@ -2,7 +2,7 @@ using PCCleaner.Core;
 using PCCleaner.Utilities;
 using Xunit;
 
-namespace PCCleanerTests;
+namespace PCCleaner.Tests;
 
 public class FileDeleteHelperTests : IDisposable
 {
@@ -230,6 +230,121 @@ public class FileDeleteHelperTests : IDisposable
 
         Assert.True(File.Exists(nested), "non-recursive must not reach subdirs");
         Assert.Equal(0, result.FilesDeleted);
+    }
+
+    // --- deleteRootDirectory flag ---
+
+    [Fact]
+    public void CleanDirectory_DeleteRootDirectory_True_RemovesRootAfterEmpty()
+    {
+        MakeOldFile("file.txt", "x");
+
+        FileDeleteHelper.CleanDirectory("test", _dir, Real(), deleteRootDirectory: true);
+
+        Assert.False(Directory.Exists(_dir), "root directory must be removed when deleteRootDirectory is true");
+    }
+
+    [Fact]
+    public void CleanDirectory_DeleteRootDirectory_False_PreservesRoot()
+    {
+        MakeOldFile("file.txt", "x");
+
+        FileDeleteHelper.CleanDirectory("test", _dir, Real(), deleteRootDirectory: false);
+
+        Assert.True(Directory.Exists(_dir), "root directory must be kept when deleteRootDirectory is false");
+    }
+
+    [Fact]
+    public void CleanDirectory_DeleteRootDirectory_True_CountsRootAsDeletedDirectory()
+    {
+        MakeOldFile("file.txt", "x");
+
+        var result = FileDeleteHelper.CleanDirectory("test", _dir, Real(), deleteRootDirectory: true);
+
+        Assert.Equal(1, result.DirectoriesDeleted);
+    }
+
+    // --- IsDirectoryLink ---
+
+    [Fact]
+    public void IsDirectoryLink_RegularDirectory_ReturnsFalse()
+    {
+        Assert.False(FileDeleteHelper.IsDirectoryLink(_dir));
+    }
+
+    [Fact]
+    public void IsDirectoryLink_NonExistentPath_ReturnsTrueAsSafeDefault()
+    {
+        string gone = Path.Combine(Path.GetTempPath(), $"Gone_{Guid.NewGuid():N}");
+        // Cannot read attributes of missing path → safe default is true (skip it)
+        Assert.True(FileDeleteHelper.IsDirectoryLink(gone));
+    }
+
+    // --- v1.0.2: Per-file error log ---
+
+    [Fact]
+    public void AddFailure_WithPathAndReason_AddsNoteWithFilename()
+    {
+        var result = new CleanResult("test");
+        result.AddFailure(@"C:\temp\cache.db", "Access to the path is denied");
+
+        Assert.Equal(1, result.Failures);
+        Assert.Single(result.Notes);
+        Assert.Contains("cache.db", result.Notes[0]);
+        Assert.Contains("Access to the path is denied", result.Notes[0]);
+    }
+
+    [Fact]
+    public void AddFailure_NoArgs_OnlyIncrementsCount()
+    {
+        var result = new CleanResult("test");
+        result.AddFailure();
+
+        Assert.Equal(1, result.Failures);
+        Assert.Empty(result.Notes);
+    }
+
+    [Fact]
+    public void AddFailure_WithDirectoryPath_AddsNoteWithDirectoryName()
+    {
+        var result = new CleanResult("test");
+        result.AddFailure(@"C:\temp\subdir", "Directory not empty");
+
+        Assert.Equal(1, result.Failures);
+        Assert.Contains("subdir", result.Notes[0]);
+        Assert.Contains("Directory not empty", result.Notes[0]);
+    }
+
+    [Fact]
+    public void CleanDirectory_LockedFile_RecordsFilenameInNotes()
+    {
+        string file = MakeOldFile("locked.txt", "data");
+
+        // Hold an exclusive lock on the file during clean
+        using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var result = FileDeleteHelper.CleanDirectory("test", _dir, Real());
+
+        // The file is locked — delete fails even after retry
+        Assert.Equal(0, result.FilesDeleted);
+        Assert.Equal(1, result.Failures);
+        Assert.Contains(result.Notes, n => n.Contains("locked.txt"));
+    }
+
+    [Fact]
+    public void CleanDirectory_MultipleFailures_AllFilenamesInNotes()
+    {
+        string f1 = MakeOldFile("lock1.txt", "x");
+        string f2 = MakeOldFile("lock2.txt", "y");
+
+        using var s1 = new FileStream(f1, FileMode.Open, FileAccess.Read, FileShare.None);
+        using var s2 = new FileStream(f2, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var result = FileDeleteHelper.CleanDirectory("test", _dir, Real());
+
+        Assert.Equal(2, result.Failures);
+        Assert.Contains(result.Notes, n => n.Contains("lock1.txt"));
+        Assert.Contains(result.Notes, n => n.Contains("lock2.txt"));
     }
 
     // --- Helpers ---

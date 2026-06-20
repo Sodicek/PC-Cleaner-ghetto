@@ -8,10 +8,10 @@
 
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>PCCleaner.Desktop</_Parameter1>
+      <_Parameter1>PCCleaner.App</_Parameter1>
     </AssemblyAttribute>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
-      <_Parameter1>PCCleanerTests</_Parameter1>
+      <_Parameter1>PCCleaner.Tests</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
 

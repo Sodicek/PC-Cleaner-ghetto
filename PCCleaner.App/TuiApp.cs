@@ -3,7 +3,7 @@ using PCCleaner.Core;
 using PCCleaner.Utilities;
 using Terminal.Gui;
 
-namespace PCCleaner.Desktop;
+namespace PCCleaner.App;
 
 internal sealed class TuiApp
 {
@@ -32,20 +32,26 @@ internal sealed class TuiApp
     private          AppSettings             _settings;
     private          AppLanguage             _language;
 
-    private TextField  _ageField         = null!;
-    private CheckBox   _includeRecentBox = null!;
-    private TextView   _outputView       = null!;
-    private StatusItem _freedItem        = null!;
-    private StatusItem _totalFreedItem  = null!;
-    private StatusBar  _statusBar        = null!;
-    private Button     _btnScan          = null!;
-    private Button     _btnClean         = null!;
+    private TextField  _ageField            = null!;
+    private CheckBox   _includeRecentBox    = null!;
+    private TextView   _outputView          = null!;
+    private StatusItem _freedItem           = null!;
+    private StatusItem _totalFreedItem      = null!;
+    private StatusItem _errorsItem          = null!;
+    private StatusItem _selectedCountItem   = null!;
+    private StatusBar  _statusBar           = null!;
+    private Button     _btnScan             = null!;
+    private Button     _btnClean            = null!;
+    private Label      _infoNameLabel       = null!;
+    private Label      _infoDescLabel       = null!;
+    private Label      _infoRiskLabel       = null!;
 
     private readonly StringBuilder _outputBuf = new();
 
     // Cancel support
-    private volatile bool _isRunning       = false;
-    private volatile bool _cancelRequested = false;
+    private volatile bool _isRunning         = false;
+    private volatile bool _cancelRequested   = false;
+    private          bool _adminWarningShown = false;
 
     // Update
     private UpdateInfo? _pendingUpdate  = null;
@@ -236,23 +242,24 @@ internal sealed class TuiApp
         top.ColorScheme = SchemeContent;
 
         // ── Menu bar ──────────────────────────────────────────────────────────
-        var menuLang     = new MenuItem("_Language: EN / CS", "", ToggleLanguage);
-        var menuUpdates  = new MenuItem("_Check for Updates", "", ShowUpdateDialog);
-        var menuOverview = new MenuItem("_Disk Overview...", "", ShowDiskOverviewDialog);
-        var menuQuit     = new MenuItem("_Quit", "Ctrl+Q", () => Application.RequestStop());
-        var menuSchedule = new MenuItem("_Schedule Auto-Clean...", "", ShowScheduleDialog);
+        var menuLang      = new MenuItem("_Language: EN / CS", "", ToggleLanguage);
+        var menuUpdates   = new MenuItem("_Check for Updates", "", ShowUpdateDialog);
+        var menuOverview  = new MenuItem("_Disk Overview...", "", ShowDiskOverviewDialog);
+        var menuChangelog = new MenuItem("_Changelog...", "", ShowChangelogDialog);
+        var menuQuit      = new MenuItem("_Quit", "Ctrl+Q", () => Application.RequestStop());
+        var menuSchedule  = new MenuItem("_Schedule Auto-Clean...", "", ShowScheduleDialog);
         MenuItem[] fileItems;
         if (SystemInfo.IsWindows)
         {
             var menuAdmin = new MenuItem("_Restart as Administrator", "", RestartAsAdmin);
 #pragma warning disable CS8625
-            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuAdmin, null, menuOverview, null, menuUpdates, null, menuQuit };
+            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuAdmin, null, menuOverview, null, menuUpdates, null, menuChangelog, null, menuQuit };
 #pragma warning restore CS8625
         }
         else
         {
 #pragma warning disable CS8625
-            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuOverview, null, menuUpdates, null, menuQuit };
+            fileItems = new MenuItem[] { menuLang, null, menuSchedule, null, menuOverview, null, menuUpdates, null, menuChangelog, null, menuQuit };
 #pragma warning restore CS8625
         }
 
@@ -327,6 +334,17 @@ internal sealed class TuiApp
             };
             // FIX: wire toggle → save settings
             cb.Toggled += _ => SaveSettings();
+            int idx = i;
+            cb.Enter += _ =>
+            {
+                ICleaner ci = _cleaners[idx];
+                _infoNameLabel.Text = ci.Name;
+                _infoDescLabel.Text = ci.Description;
+                _infoRiskLabel.Text = $"Risk: {ci.Risk}";
+                _infoNameLabel.SetNeedsDisplay();
+                _infoDescLabel.SetNeedsDisplay();
+                _infoRiskLabel.SetNeedsDisplay();
+            };
             _checkBoxes.Add(cb);
             scroll.Add(cb);
         }
@@ -357,6 +375,8 @@ internal sealed class TuiApp
         string ageStr = _settings.AgeHours.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         _ageField         = new TextField(ageStr)               { X = 1, Y = 6,  Width = Dim.Fill(2) };
         _includeRecentBox = new CheckBox("Include recent files") { X = 1, Y = 7,  Checked = _settings.IncludeRecent, ColorScheme = SchemeContent };
+        _ageField.TextChanged         += _ => SaveSettings();
+        _includeRecentBox.Toggled     += _ => SaveSettings();
 
         controlsFrame.Add(new Label("· · · · · · · · · · · ·") { X = 1, Y = 9,  ColorScheme = SchemeDim });
         var btnRecommended = new Button("Recommended")     { X = 1, Y = 10, ColorScheme = SchemeContent };
@@ -367,8 +387,14 @@ internal sealed class TuiApp
         btnAll.Clicked         += () => { SelectAll();         SaveSettings(); };
         btnClear.Clicked       += () => { ClearSelection();    SaveSettings(); };
 
+        controlsFrame.Add(new Label("· · · · · · · · · · · ·") { X = 1, Y = 16, ColorScheme = SchemeDim });
+        _infoNameLabel = new Label("") { X = 1, Y = 17, Width = Dim.Fill(2), ColorScheme = SchemePrimary };
+        _infoDescLabel = new Label("") { X = 1, Y = 18, Width = Dim.Fill(2), ColorScheme = SchemeDim };
+        _infoRiskLabel = new Label("") { X = 1, Y = 19, Width = Dim.Fill(2), ColorScheme = SchemeDim };
+
         controlsFrame.Add(_btnScan, _btnClean, _ageField, _includeRecentBox,
-            btnRecommended, btnAll, btnClear);
+            btnRecommended, btnAll, btnClear,
+            _infoNameLabel, _infoDescLabel, _infoRiskLabel);
         win.Add(controlsFrame);
 
         // ── Output panel ──────────────────────────────────────────────────────
@@ -409,6 +435,16 @@ internal sealed class TuiApp
 
         top.Add(win);
 
+        // ── Keyboard shortcuts ────────────────────────────────────────────────
+        top.KeyPress += (e) =>
+        {
+            if (e.KeyEvent.Key == Key.F1 || e.KeyEvent.KeyValue == '?')
+            {
+                ShowShortcutsDialog();
+                e.Handled = true;
+            }
+        };
+
         // ── Background update check ───────────────────────────────────────────
         _ = Task.Run(async () =>
         {
@@ -428,17 +464,23 @@ internal sealed class TuiApp
 
         // ── Status bar ────────────────────────────────────────────────────────
         string adminBadge = _isAdmin ? "● admin" : "○ user";
-        _freedItem      = new StatusItem(Key.Null, "Freed: —", null);
-        string totalLabel = _settings.TotalBytesFreed > 0
+        int initialSelected = _checkBoxes.Count(cb => cb.Checked);
+        _selectedCountItem = new StatusItem(Key.Null, $"{initialSelected} / {_cleaners.Count} selected", null);
+        _freedItem         = new StatusItem(Key.Null, "Freed: —", null);
+        string totalLabel  = _settings.TotalBytesFreed > 0
             ? $"All-time: {SystemInfo.FormatBytes(_settings.TotalBytesFreed)}"
             : "All-time: —";
         _totalFreedItem = new StatusItem(Key.Null, totalLabel, null);
+        _errorsItem     = new StatusItem(Key.Null, "", null);
         _statusBar = new StatusBar(new StatusItem[]
         {
             new(Key.Q | Key.CtrlMask, "~Ctrl+Q~ Quit", () => Application.RequestStop()),
-            new(Key.Null, $"{_cleaners.Count} cleaners   ·   {SystemInfo.MachineName}   ·   {adminBadge}", null),
+            new(Key.F1, "~F1~ Shortcuts", ShowShortcutsDialog),
+            new(Key.Null, $"{SystemInfo.MachineName}   ·   {adminBadge}", null),
+            _selectedCountItem,
             _freedItem,
-            _totalFreedItem
+            _totalFreedItem,
+            _errorsItem
         })
         { ColorScheme = SchemePrimary };
         top.Add(_statusBar);
@@ -518,6 +560,12 @@ internal sealed class TuiApp
         _totalFreedItem.Title = _settings.TotalBytesFreed > 0
             ? $"All-time: {SystemInfo.FormatBytes(_settings.TotalBytesFreed)}"
             : "All-time: —";
+        _statusBar.SetNeedsDisplay();
+    }
+
+    private void UpdateErrors(int totalFailures)
+    {
+        _errorsItem.Title = totalFailures > 0 ? $"✗ {totalFailures} error{(totalFailures == 1 ? "" : "s")}" : "";
         _statusBar.SetNeedsDisplay();
     }
 
@@ -770,6 +818,81 @@ internal sealed class TuiApp
         cts.Cancel();
     }
 
+    private void ShowChangelogDialog()
+    {
+        string changelogPath = Path.Combine(AppContext.BaseDirectory, "CHANGELOG.md");
+        string content;
+        try
+        {
+            content = File.Exists(changelogPath)
+                ? File.ReadAllText(changelogPath)
+                : "CHANGELOG.md not found.";
+        }
+        catch (Exception ex)
+        {
+            content = $"Could not read changelog:\n{ex.Message}";
+        }
+
+        var dialog = new Dialog("  Changelog  ", 76, 28);
+        dialog.ColorScheme = SchemePrimary;
+
+        var text = new TextView
+        {
+            X = 1, Y = 1,
+            Width    = Dim.Fill(1),
+            Height   = Dim.Fill(3),
+            ReadOnly = true,
+            WordWrap = false,
+            ColorScheme = SchemeDim,
+            Text = content
+        };
+        dialog.Add(text);
+
+        var btnClose = new Button("Close") { ColorScheme = SchemeAccent };
+        btnClose.Clicked += () => Application.RequestStop();
+        dialog.AddButton(btnClose);
+        Application.Run(dialog);
+    }
+
+    private void ShowShortcutsDialog()
+    {
+        var dialog = new Dialog("  Keyboard Shortcuts  ", 54, 18);
+        dialog.ColorScheme = SchemePrimary;
+
+        string[] lines =
+        {
+            "  Navigation",
+            "  Tab / Shift+Tab   Move between controls",
+            "  Arrow keys        Move within lists",
+            "  Space             Toggle checkbox / click button",
+            "  Enter             Confirm dialog / activate button",
+            "",
+            "  App shortcuts",
+            "  Ctrl+Q            Quit",
+            "  F1  /  ?          Show this help",
+            "",
+            "  During scan / clean",
+            "  Scan / Run clean  Click again to cancel",
+        };
+
+        var text = new TextView
+        {
+            X = 1, Y = 1,
+            Width    = Dim.Fill(1),
+            Height   = Dim.Fill(3),
+            ReadOnly = true,
+            WordWrap = false,
+            ColorScheme = SchemeContent,
+            Text = string.Join("\n", lines)
+        };
+        dialog.Add(text);
+
+        var btnClose = new Button("Close") { ColorScheme = SchemeAccent };
+        btnClose.Clicked += () => Application.RequestStop();
+        dialog.AddButton(btnClose);
+        Application.Run(dialog);
+    }
+
     private string BuildOverviewHeader(string home, DiskSpaceSnapshot? snapshot)
     {
         var sb = new StringBuilder();
@@ -825,6 +948,15 @@ internal sealed class TuiApp
             .Select(t => t.c.GetType().Name)
             .ToList();
         _settings.Save();
+        UpdateSelectedCount();
+    }
+
+    private void UpdateSelectedCount()
+    {
+        if (_selectedCountItem is null || _statusBar is null) return;
+        int sel = _checkBoxes.Count(cb => cb.Checked);
+        _selectedCountItem.Title = $"{sel} / {_cleaners.Count} selected";
+        _statusBar.SetNeedsDisplay();
     }
 
     // ── Cleaning logic ─────────────────────────────────────────────────────────
@@ -840,10 +972,24 @@ internal sealed class TuiApp
         List<ICleaner> selected = GetSelectedCleaners();
         if (selected.Count == 0) { SetOutput("No supported cleaners selected."); return; }
         if (!TryParseAge(out double ageHours)) { SetOutput("Age filter must be a non-negative number."); return; }
+
+        // One-time admin warning on first real clean when running without privileges (Windows only)
+        if (!previewOnly && !_isAdmin && !_adminWarningShown && SystemInfo.IsWindows)
+        {
+            _adminWarningShown = true;
+            var adminCleaners = _cleaners.Where(c => c.RequiresAdministrator && SystemInfo.IsSupported(c.Platform)).ToList();
+            if (adminCleaners.Count > 0 && !ShowAdminWarningDialog(adminCleaners))
+            {
+                SetOutput("Clean cancelled.");
+                return;
+            }
+        }
+
         if (!previewOnly && !ConfirmClean()) { SetOutput("Clean cancelled."); return; }
 
         SaveSettings();
         UpdateFreed(0);
+        UpdateErrors(0);
 
         _isRunning       = true;
         _cancelRequested = false;
@@ -858,9 +1004,10 @@ internal sealed class TuiApp
         {
             void   Append(string text) => Application.MainLoop.Invoke(() => AppendOutput(text));
             void   OnFreed(long b)     => Application.MainLoop.Invoke(() => UpdateFreed(b));
+            void   OnErrors(int n)     => Application.MainLoop.Invoke(() => UpdateErrors(n));
             bool   IsCancelled()       => _cancelRequested;
 
-            long freed = ExecuteClean(selected, options, Append, OnFreed, IsCancelled);
+            long freed = ExecuteClean(selected, options, Append, OnFreed, OnErrors, IsCancelled);
 
             Application.MainLoop.Invoke(() =>
             {
@@ -893,6 +1040,46 @@ internal sealed class TuiApp
             System.Globalization.CultureInfo.InvariantCulture,
             out ageHours) && ageHours >= 0;
 
+    private bool ShowAdminWarningDialog(IReadOnlyList<ICleaner> adminCleaners)
+    {
+        bool shouldContinue = false;
+        bool shouldRestart  = false;
+
+        int dialogHeight = Math.Max(14, 8 + adminCleaners.Count);
+        var dialog = new Dialog("  Not running as administrator  ", 64, dialogHeight);
+        dialog.ColorScheme = SchemePrimary;
+
+        dialog.Add(new Label("These cleaners are disabled — they need admin rights:") { X = 2, Y = 1, ColorScheme = SchemeDim });
+
+        for (int i = 0; i < adminCleaners.Count; i++)
+            dialog.Add(new Label($"  • {adminCleaners[i].Name}") { X = 2, Y = 2 + i, ColorScheme = SchemeContent });
+
+        int noteY = 3 + adminCleaners.Count;
+        dialog.Add(new Label("Restart as administrator to enable them,") { X = 2, Y = noteY,     ColorScheme = SchemeDim });
+        dialog.Add(new Label("or continue cleaning with what's available.") { X = 2, Y = noteY + 1, ColorScheme = SchemeDim });
+
+        var btnRestart  = new Button("Restart as Admin") { ColorScheme = SchemeAccent };
+        var btnContinue = new Button("Continue anyway")  { ColorScheme = SchemeContent };
+        var btnCancel   = new Button("Cancel")            { ColorScheme = SchemeDim };
+
+        btnRestart.Clicked  += () => { shouldRestart = true;  Application.RequestStop(); };
+        btnContinue.Clicked += () => { shouldContinue = true; Application.RequestStop(); };
+        btnCancel.Clicked   += () => Application.RequestStop();
+
+        dialog.AddButton(btnCancel);
+        dialog.AddButton(btnContinue);
+        dialog.AddButton(btnRestart);
+        Application.Run(dialog);
+
+        if (shouldRestart)
+        {
+            RestartAsAdmin();
+            return false;
+        }
+
+        return shouldContinue;
+    }
+
     private static bool ConfirmClean()
     {
         string confirmWord = Localizer.T("prompt.typeCleanWord"); // "CLEAN" or "CISTIT"
@@ -923,12 +1110,14 @@ internal sealed class TuiApp
         CleanOptions            options,
         Action<string>          append,
         Action<long>            onFreed,
+        Action<int>             onErrors,
         Func<bool>              isCancelled)
     {
         append(options.PreviewOnly ? "Scan mode — no files will be deleted.\n" : "Clean mode — files will be deleted.\n");
         append("\n");
 
-        long totalFreed = 0;
+        long totalFreed   = 0;
+        int  totalFailures = 0;
 
         var callbacks = new CleanerRunCallbacks
         {
@@ -944,9 +1133,13 @@ internal sealed class TuiApp
                     totalFreed += r.BytesFreed;
                     onFreed(totalFreed);
                 }
+                if (r.Failures > 0)
+                {
+                    totalFailures += r.Failures;
+                    onErrors(totalFailures);
+                }
             },
             Skipped        = (c, why) => append($"  {c.Name}: skipped ({why})\n"),
-            // FIX: check cancel flag before each cleaner; CleanerRunner calls this between cleaners
             ConfirmCleaner = _ =>
             {
                 if (!isCancelled()) return true;
@@ -958,6 +1151,12 @@ internal sealed class TuiApp
         var report = new CleanerRunner().Run(cleaners, options, callbacks);
         append("\n");
         append($"━━━ {report.Total.ToConsoleMessage()} ━━━\n");
+        if (!options.PreviewOnly)
+        {
+            var snap = SystemInfo.GetCurrentDriveSnapshot();
+            if (snap != null)
+                append($"Drive free: {SystemInfo.FormatBytes(snap.FreeBytes)}\n");
+        }
 
         if (!isCancelled())
         {
