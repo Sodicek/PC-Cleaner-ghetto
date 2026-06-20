@@ -35,8 +35,9 @@ internal static class SystemdTimerManager
                 ".config", "systemd", "user");
             Directory.CreateDirectory(unitDir);
 
-            // Quote the path so systemd handles spaces correctly
-            string quotedPath = "\"" + exePath.Replace("\"", "\\\"") + "\"";
+            // Quote the path so systemd handles spaces correctly.
+            // Escape % → %% to prevent systemd from interpreting specifiers like %h or %u.
+            string quotedPath = "\"" + exePath.Replace("\"", "\\\"").Replace("%", "%%") + "\"";
 
             File.WriteAllText(Path.Combine(unitDir, $"{ServiceName}.service"),
                 $"[Unit]\n" +

@@ -2,7 +2,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
-namespace PCCleaner.Desktop;
+namespace PCCleaner.App;
 
 internal sealed record UpdateInfo(
     string LatestVersion,

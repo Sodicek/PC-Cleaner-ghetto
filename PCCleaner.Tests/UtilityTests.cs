@@ -1,7 +1,7 @@
 using PCCleaner.Utilities;
 using Xunit;
 
-namespace PCCleanerTests;
+namespace PCCleaner.Tests;
 
 public class FormatBytesTests
 {
@@ -36,7 +36,7 @@ public class LocalizerTests
     public void T_KnownKey_ReturnsTranslation()
     {
         Localizer.SetLanguage(AppLanguage.English);
-        Assert.Equal("PC Cleaner", Localizer.T("app.title"));
+        Assert.Equal("CLEAN", Localizer.T("prompt.typeCleanWord"));
     }
 
     [Fact]
@@ -51,19 +51,20 @@ public class LocalizerTests
     public void T_WithArgs_FormatsPlaceholders()
     {
         Localizer.SetLanguage(AppLanguage.English);
-        string result = Localizer.T("system.detected", "Windows 11");
-        Assert.Contains("Windows 11", result);
+        string result = Localizer.T("status.unsupportedPlatform", "Windows", "Linux");
+        Assert.Contains("Windows", result);
+        Assert.Contains("Linux", result);
     }
 
     [Fact]
     public void T_WithMultipleArgs_FormatsAll()
     {
         Localizer.SetLanguage(AppLanguage.English);
-        string result = Localizer.T("console.tooSmallSize", 40, 10, 50, 18);
-        Assert.Contains("40", result);
-        Assert.Contains("10", result);
-        Assert.Contains("50", result);
-        Assert.Contains("18", result);
+        string result = Localizer.T("result.message", "MyCleaner", "deleted", 42, 7, 3, "1.5 MB", 0);
+        Assert.Contains("MyCleaner", result);
+        Assert.Contains("42", result);
+        Assert.Contains("7", result);
+        Assert.Contains("1.5 MB", result);
     }
 
     [Fact]
@@ -73,7 +74,7 @@ public class LocalizerTests
         try
         {
             Localizer.SetLanguage(AppLanguage.Czech);
-            Assert.Equal("Hotovo.", Localizer.T("status.done"));
+            Assert.Equal("CISTIT", Localizer.T("prompt.typeCleanWord"));
         }
         finally
         {
@@ -88,7 +89,7 @@ public class LocalizerTests
         try
         {
             Localizer.SetLanguage(AppLanguage.English);
-            Assert.Equal("Done.", Localizer.T("status.done"));
+            Assert.Equal("CLEAN", Localizer.T("prompt.typeCleanWord"));
         }
         finally
         {
@@ -158,5 +159,19 @@ public class LocalizerTests
         {
             Localizer.SetLanguage(original);
         }
+    }
+}
+
+// ── SystemInfo — drive snapshot ───────────────────────────────────────────────
+
+public class DiskSnapshotTests
+{
+    [Fact]
+    public void GetCurrentDriveSnapshot_ReturnsNonNullWithPositiveFreeSpace()
+    {
+        var snapshot = SystemInfo.GetCurrentDriveSnapshot();
+        Assert.NotNull(snapshot);
+        Assert.True(snapshot!.FreeBytes > 0, "Drive must have some free space");
+        Assert.False(string.IsNullOrWhiteSpace(snapshot.DriveName));
     }
 }
