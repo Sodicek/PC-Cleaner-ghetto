@@ -2,12 +2,6 @@
 
 ## Unreleased
 
-### Project housekeeping
-- Renamed solution from `PC Cleaner ghetto.sln` → `PCCleaner.sln`
-- Renamed project `PCCleaner.Desktop` → `PCCleaner.App` (it's a TUI app, not a desktop GUI) — folder, `.csproj`, and namespace updated
-- Renamed project `PCCleanerTests` → `PCCleaner.Tests` — folder, `.csproj`, and namespace updated to match dot-notation convention
-- Fixed `InternalsVisibleTo` in `PCCleaner.Core.csproj` to reference new assembly names (`PCCleaner.App`, `PCCleaner.Tests`)
-
 ## v1.0.2
 
 ### Stability & polish
@@ -52,6 +46,13 @@
 ### Tests
 
 - 189 unit tests (up from 180), covering: updater asset name validation (known safe names pass; injection strings fail), systemd unit file path escaping (`%`-containing paths pass the newline guard; newline-containing paths are still rejected), all-cleaner metadata completeness (name/description/risk non-empty on all platforms), admin cleaner platform filter correctness, and drive snapshot returning valid free space.
+
+### Project housekeeping
+
+- Renamed solution from `PC Cleaner ghetto.sln` → `PCCleaner.sln`
+- Renamed project `PCCleaner.Desktop` → `PCCleaner.App` (it's a TUI app, not a desktop GUI) — folder, `.csproj`, and namespace updated
+- Renamed project `PCCleanerTests` → `PCCleaner.Tests` — folder, `.csproj`, and namespace updated to match dot-notation convention
+- Fixed `InternalsVisibleTo` in `PCCleaner.Core.csproj` to reference new assembly names (`PCCleaner.App`, `PCCleaner.Tests`)
 
 ## v1.0.1
 
