@@ -1,5 +1,10 @@
 # PC Cleaner
 
+[![Latest Release](https://img.shields.io/github/v/release/Sodicek/PC-Cleaner?style=flat-square&color=blue)](https://github.com/Sodicek/PC-Cleaner/releases/latest)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-purple?style=flat-square)](https://dotnet.microsoft.com/en-us/download/dotnet/8.0)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/Sodicek/PC-Cleaner/releases/latest)
+[![Tests](https://img.shields.io/badge/tests-189%20passing-brightgreen?style=flat-square)](https://github.com/Sodicek/PC-Cleaner)
+
 A cross-platform terminal PC cleaner with an animated TUI. Cleans temp files, browser caches, developer tool caches, duplicate files, and more — with a preview mode and confirmation step before touching anything real.
 
 ## Download
