@@ -53,7 +53,6 @@
 - Renamed project `PCCleaner.Desktop` → `PCCleaner.App` (it's a TUI app, not a desktop GUI) — folder, `.csproj`, and namespace updated
 - Renamed project `PCCleanerTests` → `PCCleaner.Tests` — folder, `.csproj`, and namespace updated to match dot-notation convention
 - Fixed `InternalsVisibleTo` in `PCCleaner.Core.csproj` to reference new assembly names (`PCCleaner.App`, `PCCleaner.Tests`)
-
 ## v1.0.1
 
 ### New features
