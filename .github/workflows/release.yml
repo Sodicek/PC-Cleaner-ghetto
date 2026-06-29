@@ -25,11 +25,11 @@ jobs:
         run: dotnet restore
 
       - name: Test
-        run: dotnet test PCCleanerTests --no-restore -c Release
+        run: dotnet test PCCleaner.Tests --no-restore -c Release
 
       - name: Publish Windows x64
         run: |
-          dotnet publish PCCleaner.Desktop \
+          dotnet publish PCCleaner.App \
             -c Release -r win-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
@@ -38,23 +38,33 @@ jobs:
 
       - name: Publish Linux x64
         run: |
-          dotnet publish PCCleaner.Desktop \
+          dotnet publish PCCleaner.App \
             -c Release -r linux-x64 \
             --self-contained true \
             -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
             -o publish/linux
 
       - name: Rename artifacts
         run: |
-          mv publish/win/PCCleaner.Desktop.exe  publish/PCCleaner-win-x64.exe
-          mv publish/linux/PCCleaner.Desktop    publish/PCCleaner-linux-x64
+          mv publish/win/PCCleaner.App.exe  publish/PCCleaner-win-x64.exe
+          mv publish/linux/PCCleaner.App    publish/PCCleaner-linux-x64
           chmod +x publish/PCCleaner-linux-x64
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          NOTES=$(awk "/^## v${VERSION}/{found=1; next} found && /^## v/{exit} found{print}" CHANGELOG.md)
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "PC Cleaner ${{ github.ref_name }}"
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: |
             publish/PCCleaner-win-x64.exe
             publish/PCCleaner-linux-x64
