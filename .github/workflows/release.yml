@@ -51,20 +51,11 @@ jobs:
           mv publish/linux/PCCleaner.App    publish/PCCleaner-linux-x64
           chmod +x publish/PCCleaner-linux-x64
 
-      - name: Extract release notes from CHANGELOG
-        id: notes
-        run: |
-          VERSION=${GITHUB_REF_NAME#v}
-          NOTES=$(awk "/^## v${VERSION}/{found=1; next} found && /^## v/{exit} found{print}" CHANGELOG.md)
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "PC Cleaner ${{ github.ref_name }}"
-          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: true
           files: |
             publish/PCCleaner-win-x64.exe
             publish/PCCleaner-linux-x64
